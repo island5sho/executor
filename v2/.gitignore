@@ -1,6 +1,0 @@
-.reference/
-.vercel
-.env*.local
-.next/
-.turbo/
-.executor-v2/
