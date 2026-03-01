@@ -6,10 +6,17 @@
     ".": "./src/index.ts"
   },
   "scripts": {
+    "test": "bunx vitest run --no-watch src/*.integration.test.ts",
     "typecheck": "bunx tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@effect/platform": "catalog:",
     "@executor-v2/engine": "workspace:*",
     "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "vitest": "catalog:",
+    "wrangler": "^4.0.0"
   }
 }
