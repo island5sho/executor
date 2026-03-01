@@ -9,6 +9,7 @@ import { createExecuteRuntimeRunInConvex } from "./runtime_execution_port";
 
 export type ExecuteRunImplOptions = {
   toolRegistry?: ToolRegistry;
+  makeRunId?: () => string;
 };
 
 export const executeRunImpl = (
@@ -19,6 +20,9 @@ export const executeRunImpl = (
     createExecuteRuntimeRunInConvex({
       toolRegistry: options.toolRegistry,
     }),
+    {
+      makeRunId: options.makeRunId,
+    },
   );
 
   return runExecutor.executeRun(input);

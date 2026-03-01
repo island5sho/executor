@@ -1,3 +1,10 @@
+import {
+  PersistentToolApprovalPolicyStoreError,
+  createPersistentToolApprovalPolicy,
+  type PersistentToolApprovalRecord,
+  type PersistentToolApprovalStore,
+  type ToolApprovalPolicy,
+} from "@executor-v2/engine";
 import { SourceStoreError } from "@executor-v2/persistence-ports";
 import {
   type LocalStateSnapshot,
@@ -44,6 +51,33 @@ const findApprovalIndex = (
 const sortApprovals = (approvals: ReadonlyArray<Approval>): Array<Approval> =>
   [...approvals].sort((left, right) => right.requestedAt - left.requestedAt);
 
+const toPersistentApprovalStoreError = (
+  operation: string,
+  message: string,
+  details: string | null,
+): PersistentToolApprovalPolicyStoreError =>
+  new PersistentToolApprovalPolicyStoreError({
+    operation,
+    message,
+    details,
+  });
+
+const toPersistentApprovalStoreErrorFromLocalState = (
+  operation: string,
+  error: LocalStateStoreError,
+): PersistentToolApprovalPolicyStoreError =>
+  toPersistentApprovalStoreError(operation, error.message, error.details ?? error.reason ?? null);
+
+const toPersistentApprovalRecord = (approval: Approval): PersistentToolApprovalRecord => ({
+  approvalId: approval.id,
+  workspaceId: approval.workspaceId,
+  runId: approval.taskRunId,
+  callId: approval.callId,
+  toolPath: approval.toolPath,
+  status: approval.status,
+  reason: approval.reason,
+});
+
 const updateApproval = (
   snapshot: LocalStateSnapshot,
   index: number,
@@ -57,6 +91,93 @@ const updateApproval = (
     generatedAt: Date.now(),
     approvals,
   };
+};
+
+export type PmPersistentToolApprovalPolicyOptions = {
+  requireApprovals?: boolean;
+  retryAfterMs?: number;
+};
+
+export const createPmPersistentToolApprovalPolicy = (
+  localStateStore: LocalStateStore,
+  options: PmPersistentToolApprovalPolicyOptions = {},
+): ToolApprovalPolicy => {
+  const missingSnapshotError = (operation: string): PersistentToolApprovalPolicyStoreError =>
+    toPersistentApprovalStoreError(
+      operation,
+      "Persistent approvals require an initialized local state snapshot",
+      null,
+    );
+
+  const store: PersistentToolApprovalStore = {
+    findByRunAndCall: (input) =>
+      localStateStore.getSnapshot().pipe(
+        Effect.mapError((error) =>
+          toPersistentApprovalStoreErrorFromLocalState("approvals.read", error),
+        ),
+        Effect.flatMap((snapshotOption) => {
+          const snapshot = Option.getOrNull(snapshotOption);
+          if (snapshot === null) {
+            return Effect.fail(missingSnapshotError("approvals.read"));
+          }
+
+          const approval =
+            snapshot.approvals.find(
+              (candidate) =>
+                candidate.workspaceId === input.workspaceId &&
+                candidate.taskRunId === input.runId &&
+                candidate.callId === input.callId,
+            ) ?? null;
+
+          return Effect.succeed(approval ? toPersistentApprovalRecord(approval) : null);
+        }),
+      ),
+
+    createPending: (input) =>
+      localStateStore.getSnapshot().pipe(
+        Effect.mapError((error) =>
+          toPersistentApprovalStoreErrorFromLocalState("approvals.read", error),
+        ),
+        Effect.flatMap((snapshotOption) => {
+          const snapshot = Option.getOrNull(snapshotOption);
+          if (snapshot === null) {
+            return Effect.fail(missingSnapshotError("approvals.create"));
+          }
+
+          const pendingApproval = {
+            id: `apr_${crypto.randomUUID()}`,
+            workspaceId: input.workspaceId,
+            taskRunId: input.runId,
+            callId: input.callId,
+            toolPath: input.toolPath,
+            status: "pending",
+            inputPreviewJson: input.inputPreviewJson,
+            reason: null,
+            requestedAt: Date.now(),
+            resolvedAt: null,
+          } as Approval;
+
+          const nextSnapshot: LocalStateSnapshot = {
+            ...snapshot,
+            generatedAt: Date.now(),
+            approvals: [...snapshot.approvals, pendingApproval],
+          };
+
+          return localStateStore.writeSnapshot(nextSnapshot).pipe(
+            Effect.mapError((error) =>
+              toPersistentApprovalStoreErrorFromLocalState("approvals.write", error),
+            ),
+            Effect.as(toPersistentApprovalRecord(pendingApproval)),
+          );
+        }),
+      ),
+  };
+
+  return createPersistentToolApprovalPolicy({
+    store,
+    requireApprovals: options.requireApprovals,
+    retryAfterMs: options.retryAfterMs,
+  });
 };
 
 export const createPmApprovalsService = (

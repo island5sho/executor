@@ -44,6 +44,15 @@ export {
 export { createSourceToolRegistry } from "./source-tool-registry";
 
 export {
+  PersistentToolApprovalPolicyStoreError,
+  createPersistentToolApprovalPolicy,
+  type CreatePersistentToolApprovalPolicyOptions,
+  type PersistentToolApprovalRecord,
+  type PersistentToolApprovalStatus,
+  type PersistentToolApprovalStore,
+} from "./persistent-tool-approval-policy";
+
+export {
   makeOpenApiToolProvider,
   openApiToolDescriptorsFromManifest,
 } from "./openapi-provider";

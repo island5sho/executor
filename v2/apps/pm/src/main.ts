@@ -29,7 +29,10 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { PmActorLive } from "./actor";
-import { createPmApprovalsService } from "./approvals-service";
+import {
+  createPmApprovalsService,
+  createPmPersistentToolApprovalPolicy,
+} from "./approvals-service";
 import { startPmHttpServer } from "./http-server";
 import { createPmMcpHandler } from "./mcp-handler";
 import { createPmExecuteRuntimeRun } from "./runtime-execution-port";
@@ -56,11 +59,17 @@ const readConfiguredWorkspaceId = (value: string | undefined): string => {
   return normalized && normalized.length > 0 ? normalized : "ws_local";
 };
 
+const readBooleanFlag = (value: string | undefined): boolean => {
+  const normalized = value?.trim().toLowerCase();
+  return normalized === "1" || normalized === "true" || normalized === "yes";
+};
+
 const formatRuntimeAdapterError = (error: RuntimeAdapterError): string =>
   error.details ? `${error.message}: ${error.details}` : error.message;
 
 const port = parsePort(process.env.PORT);
 const workspaceId = readConfiguredWorkspaceId(process.env.PM_WORKSPACE_ID);
+const requireToolApprovals = readBooleanFlag(process.env.PM_REQUIRE_TOOL_APPROVALS);
 
 const pmRuntimeAdapters = [
   makeLocalInProcessRuntimeAdapter(),
@@ -142,11 +151,15 @@ const controlPlaneWebHandler = makeControlPlaneWebHandler(
 );
 
 const toolProviderRegistry = makeToolProviderRegistry([makeOpenApiToolProvider()]);
+const persistentApprovalPolicy = createPmPersistentToolApprovalPolicy(localStateStore, {
+  requireApprovals: requireToolApprovals,
+});
 const toolRegistry = createSourceToolRegistry({
   workspaceId,
   sourceStore,
   toolArtifactStore,
   toolProviderRegistry,
+  approvalPolicy: persistentApprovalPolicy,
 });
 const executeRuntimeRun = createPmExecuteRuntimeRun({
   defaultRuntimeKind,

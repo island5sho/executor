@@ -2,9 +2,11 @@ import { describe, expect, it } from "@effect/vitest";
 import { convexTest } from "convex-test";
 import * as Effect from "effect/Effect";
 
-import { api } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import { executeRunImpl } from "./executor";
 import schema from "./schema";
+
+const runtimeInternal = internal as any;
 
 const setup = () =>
   convexTest(schema, {
@@ -13,6 +15,7 @@ const setup = () =>
     "./executor.ts": () => import("./executor"),
     "./runtimeCallbacks.ts": () => import("./runtimeCallbacks"),
     "./source_tool_registry.ts": () => import("./source_tool_registry"),
+    "./task_runs.ts": () => import("./task_runs"),
     "./controlPlane.ts": () => import("./controlPlane"),
     "./_generated/api.js": () => import("./_generated/api.js"),
   });
@@ -87,6 +90,114 @@ describe("Convex executor and control-plane", () => {
       )) as Array<unknown>;
 
       expect(listedAfterRemove).toHaveLength(0);
+    }),
+  );
+
+  it.effect("persists approval state for runtime tool calls", () =>
+    Effect.gen(function* () {
+      const t = setup();
+
+      const missingRunDecision = (yield* Effect.tryPromise(() =>
+        t.mutation(runtimeInternal.source_tool_registry.evaluateToolApproval, {
+          workspaceId: "ws_1",
+          runId: "run_approval_1",
+          callId: "call_approval_1",
+          toolPath: "github.repos.delete",
+          inputPreviewJson: "{}",
+          defaultMode: "auto",
+          requireApprovals: true,
+          retryAfterMs: 333,
+        }),
+      )) as {
+        kind: "approved" | "pending" | "denied";
+        error?: string;
+      };
+
+      expect(missingRunDecision.kind).toBe("denied");
+      expect(missingRunDecision.error).toContain("Unknown run for approval request");
+
+      yield* Effect.tryPromise(() =>
+        t.mutation(runtimeInternal.task_runs.startTaskRun, {
+          workspaceId: "ws_1",
+          runId: "run_approval_1",
+        }),
+      );
+
+      // First evaluation writes a pending approval row when this runId/callId is unseen.
+      const firstDecision = (yield* Effect.tryPromise(() =>
+        t.mutation(runtimeInternal.source_tool_registry.evaluateToolApproval, {
+          workspaceId: "ws_1",
+          runId: "run_approval_1",
+          callId: "call_approval_1",
+          toolPath: "github.repos.delete",
+          inputPreviewJson: "{}",
+          defaultMode: "auto",
+          requireApprovals: true,
+          retryAfterMs: 333,
+        }),
+      )) as {
+        kind: "approved" | "pending" | "denied";
+        approvalId?: string;
+        retryAfterMs?: number;
+      };
+
+      expect(firstDecision.kind).toBe("pending");
+      expect(firstDecision.retryAfterMs).toBe(333);
+      expect(firstDecision.approvalId).toBeTypeOf("string");
+
+      const secondDecision = (yield* Effect.tryPromise(() =>
+        t.mutation(runtimeInternal.source_tool_registry.evaluateToolApproval, {
+          workspaceId: "ws_1",
+          runId: "run_approval_1",
+          callId: "call_approval_1",
+          toolPath: "github.repos.delete",
+          inputPreviewJson: "{}",
+          defaultMode: "auto",
+          requireApprovals: true,
+          retryAfterMs: 333,
+        }),
+      )) as {
+        kind: "approved" | "pending" | "denied";
+        approvalId?: string;
+      };
+
+      expect(secondDecision.kind).toBe("pending");
+      expect(secondDecision.approvalId).toBe(firstDecision.approvalId);
+
+      const approvalId = firstDecision.approvalId;
+      if (!approvalId) {
+        throw new Error("expected approval id");
+      }
+
+      yield* Effect.tryPromise(() =>
+        t.mutation(api.controlPlane.resolveApproval, {
+          workspaceId: "ws_1",
+          approvalId,
+          payload: {
+            status: "approved",
+            reason: "approved by test",
+          },
+        }),
+      );
+
+      const resolvedDecision = (yield* Effect.tryPromise(() =>
+        t.mutation(runtimeInternal.source_tool_registry.evaluateToolApproval, {
+          workspaceId: "ws_1",
+          runId: "run_approval_1",
+          callId: "call_approval_1",
+          toolPath: "github.repos.delete",
+          inputPreviewJson: "{}",
+          defaultMode: "auto",
+          requireApprovals: true,
+          retryAfterMs: 333,
+        }),
+      )) as {
+        kind: "approved" | "pending" | "denied";
+      };
+
+      expect(resolvedDecision).toEqual({
+        kind: "approved",
+      });
     }),
   );
 });

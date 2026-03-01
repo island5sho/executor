@@ -54,7 +54,8 @@ export const executorConfectSchema = defineSchema({
   approvals: defineTable(ApprovalSchema)
     .index("by_domainId", ["id"])
     .index("by_workspaceId", ["workspaceId"])
-    .index("by_taskRunId", ["taskRunId"]),
+    .index("by_taskRunId", ["taskRunId"])
+    .index("by_taskRunId_callId", ["taskRunId", "callId"]),
   taskRuns: defineTable(TaskRunSchema)
     .index("by_domainId", ["id"])
     .index("by_workspaceId", ["workspaceId"])

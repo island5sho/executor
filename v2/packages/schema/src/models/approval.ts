@@ -8,6 +8,7 @@ export const ApprovalSchema = Schema.Struct({
   id: ApprovalIdSchema,
   workspaceId: WorkspaceIdSchema,
   taskRunId: TaskRunIdSchema,
+  callId: Schema.String,
   toolPath: Schema.String,
   status: ApprovalStatusSchema,
   inputPreviewJson: Schema.String,
