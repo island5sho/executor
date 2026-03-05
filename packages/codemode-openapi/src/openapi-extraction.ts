@@ -5,7 +5,11 @@ import * as ParseResult from "effect/ParseResult";
 import * as Schema from "effect/Schema";
 
 import { extractOpenApiManifestJsonWithWasm } from "./openapi-extractor-wasm";
-import { OpenApiToolManifestSchema, type OpenApiToolManifest } from "./openapi-types";
+import {
+  OpenApiToolManifestSchema,
+  type OpenApiSpecInput,
+  type OpenApiToolManifest,
+} from "./openapi-types";
 
 type OpenApiExtractionStage = "validate" | "extract";
 
@@ -37,7 +41,7 @@ const toExtractionError = (
 
 const normalizeOpenApiDocumentText = (
   sourceName: string,
-  openApiSpec: unknown,
+  openApiSpec: OpenApiSpecInput,
 ): Effect.Effect<string, OpenApiExtractionError> => {
   if (typeof openApiSpec === "string") {
     return Effect.succeed(openApiSpec);
@@ -57,7 +61,7 @@ const normalizeOpenApiDocumentText = (
 
 export const extractOpenApiManifest = (
   sourceName: string,
-  openApiSpec: unknown,
+  openApiSpec: OpenApiSpecInput,
 ): Effect.Effect<OpenApiToolManifest, OpenApiExtractionError> =>
   Effect.gen(function* () {
     const openApiDocumentText = yield* normalizeOpenApiDocumentText(

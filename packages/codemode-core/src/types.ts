@@ -18,7 +18,7 @@ export type ToolMetadata = {
 
 export type ExecutableTool = {
   description?: string;
-  inputSchema: StandardSchema;
+  inputSchema?: StandardSchema;
   outputSchema?: StandardSchema;
   parameters?: StandardSchema;
   execute: (...args: any[]) => unknown;
