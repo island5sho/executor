@@ -1,4 +1,20 @@
+import type { OpenAPISpec } from "@effect/platform/OpenApi";
+
 import { Schema } from "effect";
+
+export type OpenApiJsonPrimitive = string | number | boolean | null;
+
+export type OpenApiJsonValue =
+  | OpenApiJsonPrimitive
+  | OpenApiJsonObject
+  | Array<OpenApiJsonValue>;
+
+export type OpenApiJsonObject = {
+  [key: string]: OpenApiJsonValue;
+};
+
+// Accepts Effect-generated OpenAPI specs and generic JSON-like OpenAPI objects.
+export type OpenApiSpecInput = string | OpenAPISpec | OpenApiJsonObject;
 
 export const OPEN_API_HTTP_METHODS = [
   "get",

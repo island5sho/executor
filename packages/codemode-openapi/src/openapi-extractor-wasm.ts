@@ -1,62 +1,60 @@
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import initWasmExtractor, {
   extract_manifest_json_wasm,
 } from "./openapi-extractor-wasm/openapi_extractor.js";
 
 let initPromise: Promise<void> | undefined;
 
-const readWasmBytes = async (): Promise<Uint8Array> => {
-  const candidates: string[] = [];
+const wasmAssetUrl = new URL(
+  "./openapi-extractor-wasm/openapi_extractor_bg.wasm",
+  import.meta.url,
+);
 
-  try {
-    const modulePath = fileURLToPath(String(import.meta.url));
-    candidates.push(
-      join(dirname(modulePath), "openapi-extractor-wasm/openapi_extractor_bg.wasm"),
-    );
-  } catch {
-    // Fall through to cwd-based candidates.
-  }
+const formatCause = (cause: unknown): string =>
+  cause instanceof Error ? cause.message : String(cause);
 
-  candidates.push(
-    join(
-      process.cwd(),
-      "packages/codemode-openapi/src/openapi-extractor-wasm/openapi_extractor_bg.wasm",
-    ),
-    join(
-      process.cwd(),
-      "../../packages/codemode-openapi/src/openapi-extractor-wasm/openapi_extractor_bg.wasm",
-    ),
-    join(
-      process.cwd(),
-      "node_modules/@executor-v3/codemode-openapi/src/openapi-extractor-wasm/openapi_extractor_bg.wasm",
-    ),
-    join(
-      process.cwd(),
-      "../../node_modules/@executor-v3/codemode-openapi/src/openapi-extractor-wasm/openapi_extractor_bg.wasm",
-    ),
-  );
+const initUsingRuntimeUrl = async (): Promise<void> => {
+  await initWasmExtractor({ module_or_path: wasmAssetUrl });
+};
 
-  const errors: string[] = [];
+const initUsingNodeFileSystem = async (): Promise<void> => {
+  const [{ readFile }, { fileURLToPath }] = await Promise.all([
+    import("node:fs/promises"),
+    import("node:url"),
+  ]);
 
-  for (const candidate of candidates) {
-    try {
-      return await readFile(candidate);
-    } catch (cause) {
-      errors.push(`${candidate}: ${String(cause)}`);
-    }
-  }
-
-  throw new Error(`Unable to load OpenAPI extractor wasm. Tried: ${errors.join(" | ")}`);
+  const wasmPath = fileURLToPath(wasmAssetUrl);
+  const wasmBytes = await readFile(wasmPath);
+  await initWasmExtractor({ module_or_path: wasmBytes });
 };
 
 const ensureWasmReady = (): Promise<void> => {
   if (!initPromise) {
-    initPromise = readWasmBytes().then((wasmBytes) =>
-      initWasmExtractor({ module_or_path: wasmBytes }).then(() => undefined),
-    );
+    initPromise = (async () => {
+      let runtimeUrlError: unknown;
+
+      try {
+        await initUsingRuntimeUrl();
+        return;
+      } catch (cause) {
+        runtimeUrlError = cause;
+      }
+
+      try {
+        await initUsingNodeFileSystem();
+        return;
+      } catch (filesystemError) {
+        throw new Error(
+          [
+            "Unable to initialize OpenAPI extractor wasm.",
+            `runtime-url failed: ${formatCause(runtimeUrlError)}`,
+            `node-fs fallback failed: ${formatCause(filesystemError)}`,
+          ].join(" "),
+        );
+      }
+    })().catch((error) => {
+      initPromise = undefined;
+      throw error;
+    });
   }
 
   return initPromise;

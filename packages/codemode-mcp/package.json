@@ -1,13 +1,10 @@
 {
-  "name": "@executor-v3/codemode-openapi",
+  "name": "@executor-v3/codemode-mcp",
   "private": true,
   "type": "module",
   "exports": {
     ".": "./src/index.ts"
   },
-  "files": [
-    "src"
-  ],
   "scripts": {
     "typecheck": "bunx tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
@@ -15,15 +12,14 @@
   },
   "dependencies": {
     "@executor-v3/codemode-core": "workspace:*",
-    "effect": "^3.19.19",
-    "yaml": "^2.8.1"
+    "@modelcontextprotocol/sdk": "^1.26.0",
+    "effect": "^3.19.19"
   },
   "devDependencies": {
-    "@effect/platform": "^0.94.5",
-    "@effect/platform-node": "^0.104.1",
     "@effect/vitest": "^0.27.0",
     "@types/node": "^24.3.1",
     "bun-types": "^1.2.22",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "zod": "^4.3.6"
   }
 }

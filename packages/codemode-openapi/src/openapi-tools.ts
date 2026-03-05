@@ -9,6 +9,7 @@ import {
 } from "./openapi-extraction";
 import {
   type OpenApiInvocationPayload,
+  type OpenApiSpecInput,
   type OpenApiToolManifest,
 } from "./openapi-types";
 
@@ -330,7 +331,7 @@ export const createOpenApiToolsFromManifest = (
 
 export const createOpenApiToolsFromSpec = (input: {
   sourceName: string;
-  openApiSpec: unknown;
+  openApiSpec: OpenApiSpecInput;
   baseUrl: string;
   namespace?: string;
   sourceKey?: string;

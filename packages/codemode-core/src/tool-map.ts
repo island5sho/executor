@@ -76,9 +76,7 @@ const parseInput = (input: {
 }): Effect.Effect<unknown, Error> => {
   const validate = getSchemaValidator(input.schema);
   if (!validate) {
-    return Effect.fail(
-      new Error(`Tool ${input.path} has no Standard Schema validator on inputSchema`),
-    );
+    return Effect.succeed(input.value);
   }
 
   return Effect.tryPromise({
