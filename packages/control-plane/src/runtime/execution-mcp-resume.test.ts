@@ -284,14 +284,7 @@ describe("execution-mcp-resume", () => {
           localDataDir: ":memory:",
           executionResolver: makeMcpExecutionResolver(mcpServer.endpoint),
         }),
-        (runtime) =>
-          Effect.tryPromise({
-            try: async () => {
-              await runtime.close();
-              await runtime.webHandler.dispose();
-            },
-            catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-          }).pipe(Effect.orDie),
+        (runtime) => Effect.promise(() => runtime.close()).pipe(Effect.orDie),
       );
 
       const installation = runtime.localInstallation;

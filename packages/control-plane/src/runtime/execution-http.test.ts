@@ -41,14 +41,7 @@ const makeRuntime = Effect.acquireRelease(
     localDataDir: ":memory:",
     executionResolver: makeExecutionResolver(),
   }),
-  (runtime) =>
-    Effect.tryPromise({
-      try: async () => {
-        await runtime.close();
-        await runtime.webHandler.dispose();
-      },
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-    }).pipe(Effect.orDie),
+  (runtime) => Effect.promise(() => runtime.close()).pipe(Effect.orDie),
 );
 
 describe("execution-http", () => {

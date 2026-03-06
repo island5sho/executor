@@ -94,41 +94,6 @@ export type SourceCallContext = {
   auth: ResolvedAuthMaterial;
 };
 
-export interface SourceLoader {
-  loadSource(input: {
-    source: SourceDefinition;
-  }): Promise<readonly ToolArtifact[]>;
-}
-
-export interface ToolArtifactStore {
-  putArtifacts(input: {
-    sourceKey: SourceKey;
-    artifacts: readonly ToolArtifact[];
-  }): Promise<void>;
-  getByPath(input: {
-    path: ToolPath;
-  }): Promise<ToolArtifact | null>;
-  list(): Promise<readonly ToolArtifact[]>;
-}
-
-export interface SourceStore {
-  put(input: {
-    source: SourceDefinition;
-  }): Promise<void>;
-  getByKey(input: {
-    sourceKey: SourceKey;
-  }): Promise<SourceDefinition | null>;
-}
-
-export interface CredentialBindingStore {
-  put(input: {
-    binding: CredentialBinding;
-  }): Promise<void>;
-  getBySourceKey(input: {
-    sourceKey: SourceKey;
-  }): Promise<CredentialBinding | null>;
-}
-
 export interface SecretMaterialProvider {
   providerId: string;
   get(input: {
@@ -156,14 +121,6 @@ export interface ProviderInvoker {
     artifact: ToolArtifact;
     args: unknown;
     runtime: SourceCallContext;
-    context?: ToolInvocationContext;
-  }): Promise<unknown>;
-}
-
-export interface ToolCallOrchestrator {
-  invoke(input: {
-    path: ToolPath;
-    args: unknown;
     context?: ToolInvocationContext;
   }): Promise<unknown>;
 }

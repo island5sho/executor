@@ -1,4 +1,4 @@
-import { HttpApiBuilder, HttpServer } from "@effect/platform";
+import { HttpApiBuilder } from "@effect/platform";
 import * as Layer from "effect/Layer";
 
 import { ControlPlaneApi } from "./api";
@@ -33,17 +33,6 @@ export const makeControlPlaneApiLayer = <EService, EResolver>(
     Layer.provide(serviceLayer),
     Layer.provide(actorResolverLayer),
   );
-
-export const makeControlPlaneWebHandler = <EService, EResolver>(
-  serviceLayer: Layer.Layer<ControlPlaneService, EService, never>,
-  actorResolverLayer: Layer.Layer<ControlPlaneActorResolver, EResolver, never>,
-) => {
-  const apiLayer = makeControlPlaneApiLayer(serviceLayer, actorResolverLayer);
-
-  return HttpApiBuilder.toWebHandler(
-    Layer.merge(apiLayer, HttpServer.layerContext) as any,
-  );
-};
 
 export const ControlPlaneActorResolverLive = (
   resolver: ControlPlaneActorResolverShape,
