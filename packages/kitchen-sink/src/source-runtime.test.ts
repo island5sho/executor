@@ -35,7 +35,7 @@ import {
   type SourceRuntimeResolver,
   type ToolArtifact,
   asSourceKey,
-} from "@executor-v3/control-plane";
+} from "./source-runtime-sketch-types";
 import { createOpenApiToolsFromSpec } from "@executor-v3/codemode-openapi";
 import { makeInProcessExecutor } from "@executor-v3/runtime-local-inproc";
 

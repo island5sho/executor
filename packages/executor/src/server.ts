@@ -46,13 +46,7 @@ const defaultExecutionResolver: ResolveExecutionEnvironment = () =>
   });
 
 const disposeRuntime = (runtime: SqlControlPlaneRuntime) =>
-  Effect.tryPromise({
-    try: async () => {
-      await runtime.close();
-      await runtime.webHandler.dispose();
-    },
-    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-  }).pipe(Effect.orDie);
+  Effect.promise(() => runtime.close()).pipe(Effect.orDie);
 
 const makeControlPlaneServerLayer = (input: {
   runtime: SqlControlPlaneRuntime;

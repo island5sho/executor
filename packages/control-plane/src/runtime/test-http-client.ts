@@ -11,8 +11,8 @@ import * as Layer from "effect/Layer";
 import {
   ControlPlaneActorResolver,
   ControlPlaneApi,
-  ControlPlaneApiLive,
   ControlPlaneService,
+  makeControlPlaneApiLayer,
 } from "#api";
 
 import {
@@ -26,10 +26,7 @@ const makeClientLayer = (runtime: SqlControlPlaneRuntime) => {
     ControlPlaneActorResolver,
     runtime.actorResolver,
   );
-  const apiLayer = ControlPlaneApiLive.pipe(
-    Layer.provide(serviceLayer),
-    Layer.provide(actorResolverLayer),
-  );
+  const apiLayer = makeControlPlaneApiLayer(serviceLayer, actorResolverLayer);
 
   return HttpApiBuilder.serve().pipe(
     Layer.provide(apiLayer),
@@ -62,8 +59,8 @@ export const withControlPlaneClient = <A, E>(
     accountId?: string;
   },
   f: (client: ControlPlaneClient) => Effect.Effect<A, E, never>,
-): Effect.Effect<A, E | unknown, never> =>
+): Effect.Effect<A, E, never> =>
   Effect.gen(function* () {
     const client = yield* makeControlPlaneClient(input.accountId);
     return yield* f(client);
-  }).pipe(Effect.provide(makeClientLayer(input.runtime)));
+  }).pipe(Effect.provide(makeClientLayer(input.runtime).pipe(Layer.orDie)));

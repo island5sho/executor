@@ -1,142 +1,100 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 
-import {
-  ControlPlaneAuthHeaders,
-  makeSqlControlPlaneRuntime,
-  type SqlControlPlaneRuntime,
-} from "./index";
+import type { AccountId } from "#schema";
+
+import { makeSqlControlPlaneRuntime } from "./index";
+import { withControlPlaneClient } from "./test-http-client";
 
 const makeRuntime = Effect.acquireRelease(
   makeSqlControlPlaneRuntime({ localDataDir: ":memory:" }),
-  (runtime) =>
-    Effect.tryPromise({
-      try: async () => {
-        await runtime.close();
-        await runtime.webHandler.dispose();
-      },
-      catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-    }).pipe(Effect.orDie),
+  (runtime) => Effect.promise(() => runtime.close()).pipe(Effect.orDie),
 );
 
-const callApi = (input: {
-  runtime: SqlControlPlaneRuntime;
-  method: string;
-  path: string;
-  accountId?: string;
-  body?: unknown;
-}) =>
-  Effect.tryPromise({
-    try: async () => {
-      const headers = new Headers();
-      if (input.accountId) {
-        headers.set(ControlPlaneAuthHeaders.accountId, input.accountId);
-      }
-      if (input.body !== undefined) {
-        headers.set("content-type", "application/json");
-      }
-
-      const response = await input.runtime.webHandler.handler(
-        new Request(`http://control-plane.local${input.path}`, {
-          method: input.method,
-          headers,
-          body: input.body === undefined ? undefined : JSON.stringify(input.body),
-        }),
-      );
-
-      const contentType = response.headers.get("content-type") ?? "";
-      const payload = contentType.includes("application/json")
-        ? await response.json()
-        : await response.text();
-
-      return {
-        status: response.status,
-        payload,
-      };
-    },
-    catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
-  });
+const expectLeft = <A, E>(effect: Effect.Effect<A, E, never>) =>
+  Effect.either(effect).pipe(
+    Effect.flatMap((result) =>
+      result._tag === "Left"
+        ? Effect.succeed(result.left)
+        : Effect.fail(new Error("Expected effect to fail")),
+    ),
+  );
 
 describe("control-plane-runtime", () => {
   it.scoped("supports full CRUD flow over HTTP API", () =>
     Effect.gen(function* () {
       const runtime = yield* makeRuntime;
 
-      const createOrg = yield* callApi({
-        runtime,
-        method: "POST",
-        path: "/v1/organizations",
-        accountId: "acc_1",
-        body: {
-          name: "Acme",
-        },
-      });
-      expect(createOrg.status).toBe(200);
-      const organizationId = (createOrg.payload as Record<string, unknown>).id as string;
+      const createOrg = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_1" },
+        (client) =>
+          client.organizations.create({
+            payload: {
+              name: "Acme",
+            },
+          }),
+      );
+      const organizationId = createOrg.id;
 
-      const createWorkspace = yield* callApi({
-        runtime,
-        method: "POST",
-        path: `/v1/organizations/${organizationId}/workspaces`,
-        accountId: "acc_1",
-        body: {
-          name: "Primary",
-        },
-      });
-      expect(createWorkspace.status).toBe(200);
-      expect((createWorkspace.payload as Record<string, unknown>).createdByAccountId).toBe("acc_1");
-      const workspaceId = (createWorkspace.payload as Record<string, unknown>).id as string;
+      const createWorkspace = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_1" },
+        (client) =>
+          client.workspaces.create({
+            path: { organizationId },
+            payload: { name: "Primary" },
+          }),
+      );
+      expect(createWorkspace.createdByAccountId).toBe("acc_1");
+      const workspaceId = createWorkspace.id;
 
-      const createSource = yield* callApi({
-        runtime,
-        method: "POST",
-        path: `/v1/workspaces/${workspaceId}/sources`,
-        accountId: "acc_1",
-        body: {
-          name: "Github",
-          kind: "openapi",
-          endpoint: "https://api.github.com/openapi.json",
-          configJson: "{}",
-        },
-      });
-      expect(createSource.status).toBe(200);
+      yield* withControlPlaneClient(
+        { runtime, accountId: "acc_1" },
+        (client) =>
+          client.sources.create({
+            path: { workspaceId },
+            payload: {
+              name: "Github",
+              kind: "openapi",
+              endpoint: "https://api.github.com/openapi.json",
+              configJson: "{}",
+            },
+          }),
+      );
 
-      const createPolicy = yield* callApi({
-        runtime,
-        method: "POST",
-        path: `/v1/workspaces/${workspaceId}/policies`,
-        accountId: "acc_1",
-        body: {
-          resourceType: "tool_path",
-          resourcePattern: "source.github.*",
-          matchType: "glob",
-          effect: "allow",
-          approvalMode: "auto",
-          priority: 50,
-          enabled: true,
-        },
-      });
-      expect(createPolicy.status).toBe(200);
+      yield* withControlPlaneClient(
+        { runtime, accountId: "acc_1" },
+        (client) =>
+          client.policies.create({
+            path: { workspaceId },
+            payload: {
+              resourceType: "tool_path",
+              resourcePattern: "source.github.*",
+              matchType: "glob",
+              effect: "allow",
+              approvalMode: "auto",
+              priority: 50,
+              enabled: true,
+            },
+          }),
+      );
 
-      const listSources = yield* callApi({
-        runtime,
-        method: "GET",
-        path: `/v1/workspaces/${workspaceId}/sources`,
-        accountId: "acc_1",
-      });
-      expect(listSources.status).toBe(200);
-      expect(Array.isArray(listSources.payload)).toBe(true);
-      expect((listSources.payload as Array<unknown>).length).toBe(1);
+      const listSources = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_1" },
+        (client) =>
+          client.sources.list({
+            path: { workspaceId },
+          }),
+      );
+      expect(listSources.length).toBe(1);
 
-      const listPolicies = yield* callApi({
-        runtime,
-        method: "GET",
-        path: `/v1/workspaces/${workspaceId}/policies`,
-        accountId: "acc_1",
-      });
-      expect(listPolicies.status).toBe(200);
-      expect(Array.isArray(listPolicies.payload)).toBe(true);
-      expect((listPolicies.payload as Array<unknown>).length).toBe(1);
+      const listPolicies = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_1" },
+        (client) =>
+          client.policies.list({
+            path: { workspaceId },
+          }),
+      );
+      expect(listPolicies.length).toBe(1);
     }),
   );
 
@@ -144,44 +102,41 @@ describe("control-plane-runtime", () => {
     Effect.gen(function* () {
       const runtime = yield* makeRuntime;
 
-      const orgOne = yield* callApi({
-        runtime,
-        method: "POST",
-        path: "/v1/organizations",
-        accountId: "acc_1",
-        body: { name: "Org One" },
-      });
-      const orgOneId = (orgOne.payload as Record<string, unknown>).id as string;
+      const orgOne = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_1" },
+        (client) =>
+          client.organizations.create({
+            payload: { name: "Org One" },
+          }),
+      );
 
-      const orgTwo = yield* callApi({
-        runtime,
-        method: "POST",
-        path: "/v1/organizations",
-        accountId: "acc_2",
-        body: { name: "Org Two" },
-      });
-      const orgTwoId = (orgTwo.payload as Record<string, unknown>).id as string;
+      const orgTwo = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_2" },
+        (client) =>
+          client.organizations.create({
+            payload: { name: "Org Two" },
+          }),
+      );
 
-      const listForAcc1 = yield* callApi({
-        runtime,
-        method: "GET",
-        path: "/v1/organizations",
-        accountId: "acc_1",
-      });
+      const listForAcc1 = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_1" },
+        (client) => client.organizations.list({}),
+      );
 
-      expect(listForAcc1.status).toBe(200);
-      expect(Array.isArray(listForAcc1.payload)).toBe(true);
-      expect((listForAcc1.payload as Array<unknown>).length).toBe(1);
+      expect(listForAcc1.length).toBe(1);
 
-      const getOtherOrg = yield* callApi({
-        runtime,
-        method: "GET",
-        path: `/v1/organizations/${orgTwoId}`,
-        accountId: "acc_1",
-      });
+      const getOtherOrgError = yield* expectLeft(
+        withControlPlaneClient(
+          { runtime, accountId: "acc_1" },
+          (client) =>
+            client.organizations.get({
+              path: { organizationId: orgTwo.id },
+            }),
+        ),
+      );
 
-      expect(orgOneId.length > 0).toBe(true);
-      expect(getOtherOrg.status).toBe(404);
+      expect(orgOne.id.length > 0).toBe(true);
+      expect(getOtherOrgError._tag).toBe("ControlPlaneNotFoundError");
     }),
   );
 
@@ -189,45 +144,47 @@ describe("control-plane-runtime", () => {
     Effect.gen(function* () {
       const runtime = yield* makeRuntime;
 
-      const createOrg = yield* callApi({
-        runtime,
-        method: "POST",
-        path: "/v1/organizations",
-        accountId: "owner_acc",
-        body: { name: "Secured Org" },
-      });
-      const organizationId = (createOrg.payload as Record<string, unknown>).id as string;
+      const organization = yield* withControlPlaneClient(
+        { runtime, accountId: "owner_acc" },
+        (client) =>
+          client.organizations.create({
+            payload: { name: "Secured Org" },
+          }),
+      );
 
-      const createWorkspace = yield* callApi({
-        runtime,
-        method: "POST",
-        path: `/v1/organizations/${organizationId}/workspaces`,
-        accountId: "owner_acc",
-        body: { name: "Secured WS" },
-      });
-      const workspaceId = (createWorkspace.payload as Record<string, unknown>).id as string;
+      const workspace = yield* withControlPlaneClient(
+        { runtime, accountId: "owner_acc" },
+        (client) =>
+          client.workspaces.create({
+            path: { organizationId: organization.id },
+            payload: { name: "Secured WS" },
+          }),
+      );
 
-      const createViewerMembership = yield* callApi({
-        runtime,
-        method: "POST",
-        path: `/v1/organizations/${organizationId}/memberships`,
-        accountId: "owner_acc",
-        body: {
-          accountId: "viewer_acc",
-          role: "viewer",
-          status: "active",
-        },
-      });
-      expect(createViewerMembership.status).toBe(200);
+      yield* withControlPlaneClient(
+        { runtime, accountId: "owner_acc" },
+        (client) =>
+          client.memberships.create({
+            path: { organizationId: organization.id },
+            payload: {
+              accountId: "viewer_acc" as AccountId,
+              role: "viewer",
+              status: "active",
+            },
+          }),
+      );
 
-      const viewerDelete = yield* callApi({
-        runtime,
-        method: "DELETE",
-        path: `/v1/workspaces/${workspaceId}`,
-        accountId: "viewer_acc",
-      });
+      const viewerDeleteError = yield* expectLeft(
+        withControlPlaneClient(
+          { runtime, accountId: "viewer_acc" },
+          (client) =>
+            client.workspaces.remove({
+              path: { workspaceId: workspace.id },
+            }),
+        ),
+      );
 
-      expect(viewerDelete.status).toBe(403);
+      expect(viewerDeleteError._tag).toBe("ControlPlaneForbiddenError");
     }),
   );
 
@@ -235,41 +192,45 @@ describe("control-plane-runtime", () => {
     Effect.gen(function* () {
       const runtime = yield* makeRuntime;
 
-      const createOrgA = yield* callApi({
-        runtime,
-        method: "POST",
-        path: "/v1/organizations",
-        accountId: "acc_a",
-        body: { name: "Org A" },
-      });
-      const orgAId = (createOrgA.payload as Record<string, unknown>).id as string;
+      const orgA = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_a" },
+        (client) =>
+          client.organizations.create({
+            payload: { name: "Org A" },
+          }),
+      );
 
-      const createOrgB = yield* callApi({
-        runtime,
-        method: "POST",
-        path: "/v1/organizations",
-        accountId: "acc_b",
-        body: { name: "Org B" },
-      });
-      const orgBId = (createOrgB.payload as Record<string, unknown>).id as string;
+      const orgB = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_b" },
+        (client) =>
+          client.organizations.create({
+            payload: { name: "Org B" },
+          }),
+      );
 
-      const patchOtherOrg = yield* callApi({
-        runtime,
-        method: "PATCH",
-        path: `/v1/organizations/${orgBId}`,
-        accountId: "acc_a",
-        body: { name: "Renamed" },
-      });
-      expect(orgAId.length > 0).toBe(true);
-      expect(patchOtherOrg.status).toBe(403);
+      const patchOtherOrgError = yield* expectLeft(
+        withControlPlaneClient(
+          { runtime, accountId: "acc_a" },
+          (client) =>
+            client.organizations.update({
+              path: { organizationId: orgB.id },
+              payload: { name: "Renamed" },
+            }),
+        ),
+      );
+      expect(orgA.id.length > 0).toBe(true);
+      expect(patchOtherOrgError._tag).toBe("ControlPlaneForbiddenError");
 
-      const deleteOtherOrg = yield* callApi({
-        runtime,
-        method: "DELETE",
-        path: `/v1/organizations/${orgBId}`,
-        accountId: "acc_a",
-      });
-      expect(deleteOtherOrg.status).toBe(403);
+      const deleteOtherOrgError = yield* expectLeft(
+        withControlPlaneClient(
+          { runtime, accountId: "acc_a" },
+          (client) =>
+            client.organizations.remove({
+              path: { organizationId: orgB.id },
+            }),
+        ),
+      );
+      expect(deleteOtherOrgError._tag).toBe("ControlPlaneForbiddenError");
     }),
   );
 
@@ -277,41 +238,46 @@ describe("control-plane-runtime", () => {
     Effect.gen(function* () {
       const runtime = yield* makeRuntime;
 
-      const createOrg = yield* callApi({
-        runtime,
-        method: "POST",
-        path: "/v1/organizations",
-        accountId: "creator_acc",
-        body: { name: "Creator Org" },
-      });
-      const organizationId = (createOrg.payload as Record<string, unknown>).id as string;
+      const organization = yield* withControlPlaneClient(
+        { runtime, accountId: "creator_acc" },
+        (client) =>
+          client.organizations.create({
+            payload: { name: "Creator Org" },
+          }),
+      );
 
-      const createWorkspace = yield* callApi({
-        runtime,
-        method: "POST",
-        path: `/v1/organizations/${organizationId}/workspaces`,
-        accountId: "creator_acc",
-        body: { name: "Creator WS" },
-      });
-      const workspaceId = (createWorkspace.payload as Record<string, unknown>).id as string;
+      const workspace = yield* withControlPlaneClient(
+        { runtime, accountId: "creator_acc" },
+        (client) =>
+          client.workspaces.create({
+            path: { organizationId: organization.id },
+            payload: { name: "Creator WS" },
+          }),
+      );
 
-      const suspendCreator = yield* callApi({
-        runtime,
-        method: "PATCH",
-        path: `/v1/organizations/${organizationId}/memberships/creator_acc`,
-        accountId: "creator_acc",
-        body: { status: "suspended" },
-      });
-      expect(suspendCreator.status).toBe(200);
+      yield* withControlPlaneClient(
+        { runtime, accountId: "creator_acc" },
+        (client) =>
+          client.memberships.update({
+            path: {
+              organizationId: organization.id,
+              accountId: "creator_acc" as AccountId,
+            },
+            payload: { status: "suspended" },
+          }),
+      );
 
-      const deleteWorkspace = yield* callApi({
-        runtime,
-        method: "DELETE",
-        path: `/v1/workspaces/${workspaceId}`,
-        accountId: "creator_acc",
-      });
+      const deleteWorkspaceError = yield* expectLeft(
+        withControlPlaneClient(
+          { runtime, accountId: "creator_acc" },
+          (client) =>
+            client.workspaces.remove({
+              path: { workspaceId: workspace.id },
+            }),
+        ),
+      );
 
-      expect(deleteWorkspace.status).toBe(403);
+      expect(deleteWorkspaceError._tag).toBe("ControlPlaneForbiddenError");
     }),
   );
 
@@ -319,61 +285,70 @@ describe("control-plane-runtime", () => {
     Effect.gen(function* () {
       const runtime = yield* makeRuntime;
 
-      const createOrg = yield* callApi({
-        runtime,
-        method: "POST",
-        path: "/v1/organizations",
-        accountId: "acc_del",
-        body: { name: "Delete Me" },
-      });
-      const organizationId = (createOrg.payload as Record<string, unknown>).id as string;
+      const organization = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_del" },
+        (client) =>
+          client.organizations.create({
+            payload: { name: "Delete Me" },
+          }),
+      );
 
-      const createWorkspace = yield* callApi({
-        runtime,
-        method: "POST",
-        path: `/v1/organizations/${organizationId}/workspaces`,
-        accountId: "acc_del",
-        body: { name: "Delete WS" },
-      });
-      const workspaceId = (createWorkspace.payload as Record<string, unknown>).id as string;
+      const workspace = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_del" },
+        (client) =>
+          client.workspaces.create({
+            path: { organizationId: organization.id },
+            payload: { name: "Delete WS" },
+          }),
+      );
 
-      const deleteOrg = yield* callApi({
-        runtime,
-        method: "DELETE",
-        path: `/v1/organizations/${organizationId}`,
-        accountId: "acc_del",
-      });
-      expect(deleteOrg.status).toBe(200);
+      const deleteOrg = yield* withControlPlaneClient(
+        { runtime, accountId: "acc_del" },
+        (client) =>
+          client.organizations.remove({
+            path: { organizationId: organization.id },
+          }),
+      );
+      expect(deleteOrg.removed).toBe(true);
 
       const deletedWorkspaceLookup = yield* Effect.either(
-        runtime.service.getWorkspace(workspaceId as never),
+        runtime.service.getWorkspace(workspace.id as never),
       );
       expect(deletedWorkspaceLookup._tag).toBe("Left");
 
-      const listStaleWorkspaces = yield* callApi({
-        runtime,
-        method: "GET",
-        path: `/v1/organizations/${organizationId}/workspaces`,
-        accountId: "acc_del",
-      });
-      expect(listStaleWorkspaces.status).toBe(403);
+      const listStaleWorkspacesError = yield* expectLeft(
+        withControlPlaneClient(
+          { runtime, accountId: "acc_del" },
+          (client) =>
+            client.workspaces.list({
+              path: { organizationId: organization.id },
+            }),
+        ),
+      );
+      expect(listStaleWorkspacesError._tag).toBe("ControlPlaneForbiddenError");
 
-      const createStaleWorkspace = yield* callApi({
-        runtime,
-        method: "POST",
-        path: `/v1/organizations/${organizationId}/workspaces`,
-        accountId: "acc_del",
-        body: { name: "Should Fail" },
-      });
-      expect(createStaleWorkspace.status).toBe(403);
+      const createStaleWorkspaceError = yield* expectLeft(
+        withControlPlaneClient(
+          { runtime, accountId: "acc_del" },
+          (client) =>
+            client.workspaces.create({
+              path: { organizationId: organization.id },
+              payload: { name: "Should Fail" },
+            }),
+        ),
+      );
+      expect(createStaleWorkspaceError._tag).toBe("ControlPlaneForbiddenError");
 
-      const getDeletedWorkspace = yield* callApi({
-        runtime,
-        method: "GET",
-        path: `/v1/workspaces/${workspaceId}`,
-        accountId: "acc_del",
-      });
-      expect(getDeletedWorkspace.status).toBe(403);
+      const getDeletedWorkspaceError = yield* expectLeft(
+        withControlPlaneClient(
+          { runtime, accountId: "acc_del" },
+          (client) =>
+            client.workspaces.get({
+              path: { workspaceId: workspace.id },
+            }),
+        ),
+      );
+      expect(getDeletedWorkspaceError._tag).toBe("ControlPlaneForbiddenError");
     }),
   );
 
@@ -381,13 +356,11 @@ describe("control-plane-runtime", () => {
     Effect.gen(function* () {
       const runtime = yield* makeRuntime;
 
-      const response = yield* callApi({
-        runtime,
-        method: "GET",
-        path: "/v1/organizations",
-      });
+      const error = yield* expectLeft(
+        withControlPlaneClient({ runtime }, (client) => client.organizations.list({})),
+      );
 
-      expect(response.status).toBe(401);
+      expect(error._tag).toBe("ControlPlaneUnauthorizedError");
     }),
   );
 });
