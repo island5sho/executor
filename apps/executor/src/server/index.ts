@@ -5,7 +5,6 @@ import { dirname } from "node:path";
 import { HttpApiBuilder, HttpServer } from "@effect/platform";
 import { NodeHttpServer } from "@effect/platform-node";
 import {
-  ControlPlaneActorResolver,
   createControlPlaneApiLayer,
   createSqlControlPlaneRuntime,
   type ResolveExecutionEnvironment,
@@ -46,11 +45,7 @@ const createControlPlaneServerLayer = (input: {
   host: string;
   port: number;
 }) => {
-  const actorResolverLayer = Layer.succeed(
-    ControlPlaneActorResolver,
-    input.runtime.actorResolver,
-  );
-  const apiLayer = createControlPlaneApiLayer(input.runtime.serviceLayer, actorResolverLayer);
+  const apiLayer = createControlPlaneApiLayer(input.runtime.runtimeLayer);
 
   return HttpApiBuilder.serve().pipe(
     Layer.provide(apiLayer),

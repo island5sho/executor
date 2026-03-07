@@ -2,9 +2,7 @@ import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
 import {
   OrganizationIdSchema,
   WorkspaceIdSchema,
-  WorkspaceInsertSchema,
   WorkspaceSchema,
-  WorkspaceUpdateSchema,
 } from "#schema";
 import * as Schema from "effect/Schema";
 
@@ -15,17 +13,20 @@ import {
   ControlPlaneStorageError,
   ControlPlaneUnauthorizedError,
 } from "../errors";
+import {
+  OptionalTrimmedNonEmptyStringSchema,
+  TrimmedNonEmptyStringSchema,
+} from "../string-schemas";
 
-export const CreateWorkspacePayloadSchema = WorkspaceInsertSchema.pipe(
-  Schema.pick("name"),
-);
+export const CreateWorkspacePayloadSchema = Schema.Struct({
+  name: TrimmedNonEmptyStringSchema,
+});
 
 export type CreateWorkspacePayload = typeof CreateWorkspacePayloadSchema.Type;
 
-export const UpdateWorkspacePayloadSchema = WorkspaceUpdateSchema.pipe(
-  Schema.pick("name"),
-  Schema.partialWith({ exact: true }),
-);
+export const UpdateWorkspacePayloadSchema = Schema.Struct({
+  name: OptionalTrimmedNonEmptyStringSchema,
+});
 
 export type UpdateWorkspacePayload = typeof UpdateWorkspacePayloadSchema.Type;
 

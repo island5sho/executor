@@ -1,18 +1,20 @@
-import type { ControlPlaneExecutionsServiceShape } from "#api";
 import {
   ControlPlaneBadRequestError,
   ControlPlaneNotFoundError,
   ControlPlaneStorageError,
 } from "#api";
+import type {
+  CreateExecutionPayload,
+  ResumeExecutionPayload,
+} from "../api/executions/api";
 import type { ToolInvoker } from "@executor-v3/codemode-core";
 import {
-  ControlPlanePersistenceError,
-  type SqlControlPlaneRows,
-} from "#persistence";
-import {
   ExecutionIdSchema,
+  type AccountId,
   type Execution,
   type ExecutionEnvelope,
+  type ExecutionId,
+  type WorkspaceId,
 } from "#schema";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
@@ -24,65 +26,25 @@ import {
   ResumeUnsupportedError,
 } from "./execution-state";
 import {
+  LiveExecutionManagerService,
   type LiveExecutionManager,
 } from "./live-execution";
+import {
+  asOperationErrors,
+  operationErrors,
+  type OperationErrorsLike,
+} from "./operation-errors";
+import {
+  ControlPlaneStore,
+  type ControlPlaneStoreShape,
+} from "./store";
+import { RuntimeExecutionResolverService } from "./workspace-execution-environment";
 
-const badRequest = (
-  operation: string,
-  message: string,
-  details: string,
-): ControlPlaneBadRequestError =>
-  new ControlPlaneBadRequestError({
-    operation,
-    message,
-    details,
-  });
-
-const notFound = (
-  operation: string,
-  message: string,
-  details: string,
-): ControlPlaneNotFoundError =>
-  new ControlPlaneNotFoundError({
-    operation,
-    message,
-    details,
-  });
-
-const storageFromPersistence = (
-  operation: string,
-  error: ControlPlanePersistenceError,
-): ControlPlaneStorageError =>
-  new ControlPlaneStorageError({
-    operation,
-    message: error.message,
-    details: error.details ?? "Persistence operation failed",
-  });
-
-const mapStorageError = <A>(
-  operation: string,
-  effect: Effect.Effect<A, ControlPlanePersistenceError>,
-): Effect.Effect<A, ControlPlaneStorageError> =>
-  effect.pipe(Effect.mapError((error) => storageFromPersistence(operation, error)));
-
-const requireTrimmed = (
-  operation: string,
-  fieldName: string,
-  value: string,
-): Effect.Effect<string, ControlPlaneBadRequestError> => {
-  const trimmed = value.trim();
-  if (trimmed.length === 0) {
-    return Effect.fail(
-      badRequest(
-        operation,
-        `Invalid ${fieldName}`,
-        `${fieldName} must be a non-empty string`,
-      ),
-    );
-  }
-
-  return Effect.succeed(trimmed);
-};
+const executionOps = {
+  create: operationErrors("executions.create"),
+  get: operationErrors("executions.get"),
+  resume: operationErrors("executions.resume"),
+} as const;
 
 const serializeJson = (value: unknown): string | null => {
   if (value === undefined) {
@@ -133,23 +95,22 @@ const withExecutionInvocationContext = (input: {
 };
 
 const fetchExecution = (
-  rows: SqlControlPlaneRows,
+  store: ControlPlaneStoreShape,
   input: {
     workspaceId: Execution["workspaceId"];
     executionId: Execution["id"];
-    operation: string;
+    operation: OperationErrorsLike;
   },
 ): Effect.Effect<Execution, ControlPlaneNotFoundError | ControlPlaneStorageError> =>
   Effect.gen(function* () {
-    const existing = yield* mapStorageError(
-      input.operation,
-      rows.executions.getByWorkspaceAndId(input.workspaceId, input.executionId),
+    const errors = asOperationErrors(input.operation);
+    const existing = yield* errors.mapStorage(
+      store.executions.getByWorkspaceAndId(input.workspaceId, input.executionId),
     );
 
     if (Option.isNone(existing)) {
       return yield* Effect.fail(
-        notFound(
-          input.operation,
+        errors.notFound(
           "Execution not found",
           `workspaceId=${input.workspaceId} executionId=${input.executionId}`,
         ),
@@ -160,18 +121,18 @@ const fetchExecution = (
   });
 
 const fetchExecutionEnvelope = (
-  rows: SqlControlPlaneRows,
+  store: ControlPlaneStoreShape,
   input: {
     workspaceId: Execution["workspaceId"];
     executionId: Execution["id"];
-    operation: string;
+    operation: OperationErrorsLike;
   },
 ): Effect.Effect<ExecutionEnvelope, ControlPlaneNotFoundError | ControlPlaneStorageError> =>
   Effect.gen(function* () {
-    const execution = yield* fetchExecution(rows, input);
-    const pendingInteraction = yield* mapStorageError(
-      `${input.operation}.pending_interaction`,
-      rows.executionInteractions.getPendingByExecutionId(input.executionId),
+    const errors = asOperationErrors(input.operation);
+    const execution = yield* fetchExecution(store, input);
+    const pendingInteraction = yield* errors.child("pending_interaction").mapStorage(
+      store.executionInteractions.getPendingByExecutionId(input.executionId),
     );
 
     return {
@@ -180,224 +141,242 @@ const fetchExecutionEnvelope = (
     };
   });
 
-export const createRuntimeExecutionsService = (
-  rows: SqlControlPlaneRows,
+const createExecutionWithDependencies = (
+  store: ControlPlaneStoreShape,
   executionResolver: ResolveExecutionEnvironment,
   liveExecutionManager: LiveExecutionManager,
-): ControlPlaneExecutionsServiceShape => {
-  const createExecution: ControlPlaneExecutionsServiceShape["createExecution"] = (
-    { workspaceId, payload, createdByAccountId },
-  ) =>
-    Effect.gen(function* () {
-        const code = yield* requireTrimmed("executions.create", "code", payload.code);
-        const now = Date.now();
-        const execution: Execution = {
-          id: ExecutionIdSchema.make(`exec_${crypto.randomUUID()}`),
-          workspaceId,
-          createdByAccountId,
-          status: "pending",
-          code,
-          resultJson: null,
-          errorText: null,
-          logsJson: null,
-          startedAt: null,
-          completedAt: null,
-          createdAt: now,
-          updatedAt: now,
-        };
+  input: {
+    workspaceId: WorkspaceId;
+    payload: CreateExecutionPayload;
+    createdByAccountId: AccountId;
+  },
+) =>
+  Effect.gen(function* () {
+    const code = input.payload.code;
+    const now = Date.now();
+    const execution: Execution = {
+      id: ExecutionIdSchema.make(`exec_${crypto.randomUUID()}`),
+      workspaceId: input.workspaceId,
+      createdByAccountId: input.createdByAccountId,
+      status: "pending",
+      code,
+      resultJson: null,
+      errorText: null,
+      logsJson: null,
+      startedAt: null,
+      completedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
 
-        yield* mapStorageError(
-          "executions.create.insert",
-          rows.executions.insert(execution),
-        );
+    yield* executionOps.create.child("insert").mapStorage(
+      store.executions.insert(execution),
+    );
 
-        const running = yield* mapStorageError(
-          "executions.create.mark_running",
-          rows.executions.update(execution.id, {
-            status: "running",
-            startedAt: now,
-            updatedAt: now,
-          }),
-        );
-
-        if (Option.isNone(running)) {
-          return yield* Effect.fail(
-            notFound(
-              "executions.create",
-              "Execution not found after insert",
-              `executionId=${execution.id}`,
-            ),
-          );
-        }
-
-        const environment = yield* executionResolver({
-          workspaceId,
-          accountId: createdByAccountId,
-          executionId: execution.id,
-          onElicitation: liveExecutionManager.createOnElicitation({
-            rows,
-            executionId: execution.id,
-          }),
-        }).pipe(
-          Effect.mapError((error) =>
-            new ControlPlaneStorageError({
-              operation: "executions.create.environment",
-              message: error instanceof Error ? error.message : String(error),
-              details: "Execution environment resolution failed",
-            }),
-          ),
-        );
-
-        const nextState = yield* liveExecutionManager.registerStateWaiter(execution.id);
-        const toolInvoker = withExecutionInvocationContext({
-          executionId: execution.id,
-          toolInvoker: environment.toolInvoker,
-        });
-
-        yield* Effect.sync(() => {
-          Effect.runFork(
-            environment.executor.execute(code, toolInvoker).pipe(
-              Effect.flatMap((outcome) => {
-                const completedAt = Date.now();
-                return mapStorageError(
-                  "executions.create.complete",
-                  rows.executions.update(execution.id, {
-                    status: outcome.error ? "failed" : "completed",
-                    resultJson: serializeJson(outcome.result),
-                    errorText: outcome.error ?? null,
-                    logsJson: serializeJson(outcome.logs ?? null),
-                    completedAt,
-                    updatedAt: completedAt,
-                  }),
-                ).pipe(
-                  Effect.flatMap((updated) =>
-                    Option.isNone(updated)
-                      ? Effect.fail(
-                          notFound(
-                            "executions.create",
-                            "Execution not found after completion",
-                            `executionId=${execution.id}`,
-                          ),
-                        )
-                      : Effect.succeed(updated.value),
-                  ),
-                  Effect.flatMap((updated) =>
-                    liveExecutionManager.finishRun({
-                      executionId: execution.id,
-                      state: updated.status === "completed" ? "completed" : "failed",
-                    }).pipe(Effect.as(updated)),
-                  ),
-                );
-              }),
-              Effect.catchAll((error) => {
-                const completedAt = Date.now();
-                return mapStorageError(
-                  "executions.create.complete_error",
-                  rows.executions.update(execution.id, {
-                    status: "failed",
-                    errorText: error instanceof Error ? error.message : String(error),
-                    completedAt,
-                    updatedAt: completedAt,
-                  }),
-                ).pipe(
-                  Effect.zipRight(
-                    liveExecutionManager.finishRun({
-                      executionId: execution.id,
-                      state: "failed",
-                    }),
-                  ),
-                  Effect.catchAll(() => liveExecutionManager.clearRun(execution.id)),
-                );
-              }),
-            ),
-          );
-        });
-
-        yield* Deferred.await(nextState);
-
-        return yield* fetchExecutionEnvelope(rows, {
-          workspaceId,
-          executionId: execution.id,
-          operation: "executions.create",
-        });
-      });
-
-  return {
-    createExecution,
-    getExecution: ({ workspaceId, executionId }) =>
-      fetchExecutionEnvelope(rows, {
-        workspaceId,
-        executionId,
-        operation: "executions.get",
+    const running = yield* executionOps.create.child("mark_running").mapStorage(
+      store.executions.update(execution.id, {
+        status: "running",
+        startedAt: now,
+        updatedAt: now,
       }),
+    );
 
-    resumeExecution: ({ workspaceId, executionId, payload }) =>
-      Effect.gen(function* () {
-        const existing = yield* fetchExecutionEnvelope(rows, {
-          workspaceId,
-          executionId,
-          operation: "executions.resume",
-        });
+    if (Option.isNone(running)) {
+      return yield* Effect.fail(
+        executionOps.create.notFound(
+          "Execution not found after insert",
+          `executionId=${execution.id}`,
+        ),
+      );
+    }
 
-        if (existing.execution.status !== "waiting_for_interaction") {
-          return yield* Effect.fail(
-            badRequest(
-              "executions.resume",
-              "Execution is not waiting for interaction",
-              `executionId=${executionId} status=${existing.execution.status}`,
-            ),
-          );
-        }
+    const environment = yield* executionResolver({
+      workspaceId: input.workspaceId,
+      accountId: input.createdByAccountId,
+      executionId: execution.id,
+      onElicitation: liveExecutionManager.createOnElicitation({
+        rows: store,
+        executionId: execution.id,
+      }),
+    }).pipe(
+      Effect.mapError((error) =>
+        executionOps.create.child("environment").unknownStorage(
+          error,
+          "Execution environment resolution failed",
+        ),
+      ),
+    );
 
-        const responseJson = payload.responseJson;
-        const response =
-          responseJson === undefined
-            ? { action: "accept" as const }
-            : yield* Effect.try({
-                try: () => JSON.parse(responseJson),
-                catch: (error) =>
-                  badRequest(
-                    "executions.resume",
-                    "Invalid responseJson",
-                    error instanceof Error ? error.message : String(error),
-                  ),
-              }).pipe(
-                Effect.flatMap((decoded) =>
-                  decodeElicitationResponse(decoded).pipe(
-                    Effect.mapError((error) =>
-                      badRequest(
-                        "executions.resume",
-                        "Invalid responseJson",
-                        String(error),
+    const nextState = yield* liveExecutionManager.registerStateWaiter(execution.id);
+    const toolInvoker = withExecutionInvocationContext({
+      executionId: execution.id,
+      toolInvoker: environment.toolInvoker,
+    });
+
+    yield* Effect.sync(() => {
+      Effect.runFork(
+        environment.executor.execute(code, toolInvoker).pipe(
+          Effect.flatMap((outcome) => {
+            const completedAt = Date.now();
+            return executionOps.create.child("complete").mapStorage(
+              store.executions.update(execution.id, {
+                status: outcome.error ? "failed" : "completed",
+                resultJson: serializeJson(outcome.result),
+                errorText: outcome.error ?? null,
+                logsJson: serializeJson(outcome.logs ?? null),
+                completedAt,
+                updatedAt: completedAt,
+              }),
+            ).pipe(
+              Effect.flatMap((updated) =>
+                Option.isNone(updated)
+                  ? Effect.fail(
+                      executionOps.create.notFound(
+                        "Execution not found after completion",
+                        `executionId=${execution.id}`,
                       ),
-                    ),
+                    )
+                  : Effect.succeed(updated.value),
+              ),
+              Effect.flatMap((updated) =>
+                liveExecutionManager.finishRun({
+                  executionId: execution.id,
+                  state: updated.status === "completed" ? "completed" : "failed",
+                }).pipe(Effect.as(updated)),
+              ),
+            );
+          }),
+          Effect.catchAll((error) => {
+            const completedAt = Date.now();
+            return executionOps.create.child("complete_error").mapStorage(
+              store.executions.update(execution.id, {
+                status: "failed",
+                errorText: error instanceof Error ? error.message : String(error),
+                completedAt,
+                updatedAt: completedAt,
+              }),
+            ).pipe(
+              Effect.zipRight(
+                liveExecutionManager.finishRun({
+                  executionId: execution.id,
+                  state: "failed",
+                }),
+              ),
+              Effect.catchAll(() => liveExecutionManager.clearRun(execution.id)),
+            );
+          }),
+        ),
+      );
+    });
+
+    yield* Deferred.await(nextState);
+
+    return yield* fetchExecutionEnvelope(store, {
+      workspaceId: input.workspaceId,
+      executionId: execution.id,
+      operation: executionOps.create,
+    });
+  });
+
+export const createExecution = (input: {
+  workspaceId: WorkspaceId;
+  payload: CreateExecutionPayload;
+  createdByAccountId: AccountId;
+}) =>
+  Effect.gen(function* () {
+    const store = yield* ControlPlaneStore;
+    const executionResolver = yield* RuntimeExecutionResolverService;
+    const liveExecutionManager = yield* LiveExecutionManagerService;
+
+    return yield* createExecutionWithDependencies(
+      store,
+      executionResolver,
+      liveExecutionManager,
+      input,
+    );
+  });
+
+export const getExecution = (input: {
+  workspaceId: WorkspaceId;
+  executionId: ExecutionId;
+}) =>
+  Effect.flatMap(ControlPlaneStore, (store) =>
+    fetchExecutionEnvelope(store, {
+      workspaceId: input.workspaceId,
+      executionId: input.executionId,
+      operation: executionOps.get,
+    })
+  );
+
+export const resumeExecution = (input: {
+  workspaceId: WorkspaceId;
+  executionId: ExecutionId;
+  payload: ResumeExecutionPayload;
+  resumedByAccountId: AccountId;
+}) =>
+  Effect.gen(function* () {
+    const store = yield* ControlPlaneStore;
+    const liveExecutionManager = yield* LiveExecutionManagerService;
+
+    const existing = yield* fetchExecutionEnvelope(store, {
+      workspaceId: input.workspaceId,
+      executionId: input.executionId,
+      operation: "executions.resume",
+    });
+
+    if (existing.execution.status !== "waiting_for_interaction") {
+      return yield* Effect.fail(
+        executionOps.resume.badRequest(
+          "Execution is not waiting for interaction",
+          `executionId=${input.executionId} status=${existing.execution.status}`,
+        ),
+      );
+    }
+
+    const responseJson = input.payload.responseJson;
+    const response =
+      responseJson === undefined
+        ? { action: "accept" as const }
+        : yield* Effect.try({
+            try: () => JSON.parse(responseJson),
+            catch: (error) =>
+              executionOps.resume.badRequest(
+                "Invalid responseJson",
+                error instanceof Error ? error.message : String(error),
+              ),
+          }).pipe(
+            Effect.flatMap((decoded) =>
+              decodeElicitationResponse(decoded).pipe(
+                Effect.mapError((error) =>
+                  executionOps.resume.badRequest(
+                    "Invalid responseJson",
+                    String(error),
                   ),
                 ),
-              );
-
-        const nextState = yield* liveExecutionManager.registerStateWaiter(executionId);
-        const resumed = yield* liveExecutionManager.resolveInteraction({
-          executionId,
-          response,
-        });
-
-        if (!resumed) {
-          return yield* Effect.fail(
-            badRequest(
-              "executions.resume",
-              "Resume is unavailable for this execution",
-              `executionId=${executionId} mode=${new ResumeUnsupportedError({ executionId })._tag}`,
+              ),
             ),
           );
-        }
 
-        yield* Deferred.await(nextState);
+    const nextState = yield* liveExecutionManager.registerStateWaiter(input.executionId);
+    const resumed = yield* liveExecutionManager.resolveInteraction({
+      executionId: input.executionId,
+      response,
+    });
 
-        return yield* fetchExecutionEnvelope(rows, {
-          workspaceId,
-          executionId,
-          operation: "executions.resume",
-        });
-      }),
-  };
-};
+    if (!resumed) {
+      return yield* Effect.fail(
+        executionOps.resume.badRequest(
+          "Resume is unavailable for this execution",
+          `executionId=${input.executionId} mode=${new ResumeUnsupportedError({ executionId: input.executionId })._tag}`,
+        ),
+      );
+    }
+
+    yield* Deferred.await(nextState);
+
+    return yield* fetchExecutionEnvelope(store, {
+      workspaceId: input.workspaceId,
+      executionId: input.executionId,
+      operation: executionOps.resume,
+    });
+  });

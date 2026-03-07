@@ -1,50 +1,15 @@
-import { HttpApiBuilder, HttpServerRequest } from "@effect/platform";
-import * as Effect from "effect/Effect";
+import { HttpApiBuilder } from "@effect/platform";
 import type { WorkspaceId } from "#schema";
 
+import { requirePermission, withPolicy } from "#domain";
 import {
-  Actor,
-  ActorForbiddenError,
-  ActorUnauthenticatedError,
-  requirePermission,
-  withPolicy,
-} from "#domain";
+  createExecution,
+  getExecution,
+  resumeExecution,
+} from "../../runtime/execution-service";
 
 import { ControlPlaneApi } from "../api";
-import { ControlPlaneActorResolver } from "../auth/actor-resolver";
-import {
-  ControlPlaneForbiddenError,
-  ControlPlaneUnauthorizedError,
-} from "../errors";
-import { ControlPlaneExecutionsService } from "../service";
-
-const toForbiddenError = (
-  operation: string,
-  cause: ActorForbiddenError,
-): ControlPlaneForbiddenError =>
-  new ControlPlaneForbiddenError({
-    operation,
-    message: "Access denied",
-    details: `${cause.permission} on ${cause.scope}`,
-  });
-
-const toUnauthorizedError = (
-  operation: string,
-  cause: ActorUnauthenticatedError,
-): ControlPlaneUnauthorizedError =>
-  new ControlPlaneUnauthorizedError({
-    operation,
-    message: cause.message,
-    details: "Authentication required",
-  });
-
-const resolveWorkspaceActor = (workspaceId: WorkspaceId) =>
-  Effect.gen(function* () {
-    const actorResolver = yield* ControlPlaneActorResolver;
-    const request = yield* HttpServerRequest.HttpServerRequest;
-
-    return yield* actorResolver.resolveWorkspaceActor({ workspaceId, headers: request.headers });
-  });
+import { withWorkspaceRequestActor } from "../http-auth";
 
 const requireExecuteWorkspace = (workspaceId: WorkspaceId) =>
   requirePermission({
@@ -58,65 +23,35 @@ export const ControlPlaneExecutionsLive = HttpApiBuilder.group(
   (handlers) =>
     handlers
       .handle("create", ({ path, payload }) =>
-        Effect.gen(function* () {
-          const service = yield* ControlPlaneExecutionsService;
-          const actor = yield* resolveWorkspaceActor(path.workspaceId);
-
-          return yield* withPolicy(requireExecuteWorkspace(path.workspaceId))(
-            service.createExecution({
+        withWorkspaceRequestActor("executions.create", path.workspaceId, (actor) =>
+          withPolicy(requireExecuteWorkspace(path.workspaceId))(
+            createExecution({
               workspaceId: path.workspaceId,
               payload,
               createdByAccountId: actor.principal.accountId,
             }),
-          ).pipe(Effect.provideService(Actor, actor));
-        }).pipe(
-          Effect.catchTag("ActorUnauthenticatedError", (cause) =>
-            Effect.fail(toUnauthorizedError("executions.create", cause)),
-          ),
-          Effect.catchTag("ActorForbiddenError", (cause) =>
-            Effect.fail(toForbiddenError("executions.create", cause)),
           ),
         ),
       )
       .handle("get", ({ path }) =>
-        Effect.gen(function* () {
-          const service = yield* ControlPlaneExecutionsService;
-          const actor = yield* resolveWorkspaceActor(path.workspaceId);
-
-          return yield* withPolicy(requireExecuteWorkspace(path.workspaceId))(
-            service.getExecution({
+        withWorkspaceRequestActor("executions.get", path.workspaceId, () =>
+          withPolicy(requireExecuteWorkspace(path.workspaceId))(
+            getExecution({
               workspaceId: path.workspaceId,
               executionId: path.executionId,
             }),
-          ).pipe(Effect.provideService(Actor, actor));
-        }).pipe(
-          Effect.catchTag("ActorUnauthenticatedError", (cause) =>
-            Effect.fail(toUnauthorizedError("executions.get", cause)),
-          ),
-          Effect.catchTag("ActorForbiddenError", (cause) =>
-            Effect.fail(toForbiddenError("executions.get", cause)),
           ),
         ),
       )
       .handle("resume", ({ path, payload }) =>
-        Effect.gen(function* () {
-          const service = yield* ControlPlaneExecutionsService;
-          const actor = yield* resolveWorkspaceActor(path.workspaceId);
-
-          return yield* withPolicy(requireExecuteWorkspace(path.workspaceId))(
-            service.resumeExecution({
+        withWorkspaceRequestActor("executions.resume", path.workspaceId, (actor) =>
+          withPolicy(requireExecuteWorkspace(path.workspaceId))(
+            resumeExecution({
               workspaceId: path.workspaceId,
               executionId: path.executionId,
               payload,
               resumedByAccountId: actor.principal.accountId,
             }),
-          ).pipe(Effect.provideService(Actor, actor));
-        }).pipe(
-          Effect.catchTag("ActorUnauthenticatedError", (cause) =>
-            Effect.fail(toUnauthorizedError("executions.resume", cause)),
-          ),
-          Effect.catchTag("ActorForbiddenError", (cause) =>
-            Effect.fail(toForbiddenError("executions.resume", cause)),
           ),
         ),
       ),

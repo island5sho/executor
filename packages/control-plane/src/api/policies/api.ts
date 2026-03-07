@@ -1,9 +1,12 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
 import {
+  AccountIdSchema,
   PolicyIdSchema,
-  PolicyInsertSchema,
+  PolicyApprovalModeSchema,
+  PolicyEffectSchema,
+  PolicyMatchTypeSchema,
+  PolicyResourceTypeSchema,
   PolicySchema,
-  PolicyUpdateSchema,
   WorkspaceIdSchema,
 } from "#schema";
 import * as Schema from "effect/Schema";
@@ -15,40 +18,35 @@ import {
   ControlPlaneStorageError,
   ControlPlaneUnauthorizedError,
 } from "../errors";
+import { OptionalTrimmedNonEmptyStringSchema } from "../string-schemas";
 
-export const CreatePolicyPayloadSchema = PolicyInsertSchema.pipe(
-  Schema.pick(
-    "resourceType",
-    "resourcePattern",
-    "matchType",
-    "effect",
-    "approvalMode",
-    "argumentConditionsJson",
-    "priority",
-    "enabled",
-    "targetAccountId",
-    "clientId",
-  ),
-  Schema.partialWith({ exact: true }),
-);
+export const CreatePolicyPayloadSchema = Schema.Struct({
+  resourceType: Schema.optional(PolicyResourceTypeSchema),
+  resourcePattern: OptionalTrimmedNonEmptyStringSchema,
+  matchType: Schema.optional(PolicyMatchTypeSchema),
+  effect: Schema.optional(PolicyEffectSchema),
+  approvalMode: Schema.optional(PolicyApprovalModeSchema),
+  argumentConditionsJson: Schema.optional(Schema.NullOr(Schema.String)),
+  priority: Schema.optional(Schema.Number),
+  enabled: Schema.optional(Schema.Boolean),
+  targetAccountId: Schema.optional(Schema.NullOr(AccountIdSchema)),
+  clientId: Schema.optional(Schema.NullOr(Schema.String)),
+});
 
 export type CreatePolicyPayload = typeof CreatePolicyPayloadSchema.Type;
 
-export const UpdatePolicyPayloadSchema = PolicyUpdateSchema.pipe(
-  Schema.pick(
-    "resourceType",
-    "resourcePattern",
-    "matchType",
-    "effect",
-    "approvalMode",
-    "argumentConditionsJson",
-    "priority",
-    "enabled",
-    "targetAccountId",
-    "clientId",
-  ),
-  Schema.partialWith({ exact: true }),
-);
+export const UpdatePolicyPayloadSchema = Schema.Struct({
+  resourceType: Schema.optional(PolicyResourceTypeSchema),
+  resourcePattern: OptionalTrimmedNonEmptyStringSchema,
+  matchType: Schema.optional(PolicyMatchTypeSchema),
+  effect: Schema.optional(PolicyEffectSchema),
+  approvalMode: Schema.optional(PolicyApprovalModeSchema),
+  argumentConditionsJson: Schema.optional(Schema.NullOr(Schema.String)),
+  priority: Schema.optional(Schema.Number),
+  enabled: Schema.optional(Schema.Boolean),
+  targetAccountId: Schema.optional(Schema.NullOr(AccountIdSchema)),
+  clientId: Schema.optional(Schema.NullOr(Schema.String)),
+});
 
 export type UpdatePolicyPayload = typeof UpdatePolicyPayloadSchema.Type;
 

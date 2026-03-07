@@ -13,9 +13,10 @@ import {
   ControlPlaneStorageError,
   ControlPlaneUnauthorizedError,
 } from "../errors";
+import { TrimmedNonEmptyStringSchema } from "../string-schemas";
 
 export const CreateExecutionPayloadSchema = Schema.Struct({
-  code: Schema.String,
+  code: TrimmedNonEmptyStringSchema,
 });
 
 export type CreateExecutionPayload = typeof CreateExecutionPayloadSchema.Type;

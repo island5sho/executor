@@ -9,7 +9,6 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import {
-  ControlPlaneActorResolver,
   ControlPlaneApi,
   createControlPlaneApiLayer,
 } from "#api";
@@ -20,11 +19,7 @@ import {
 } from "./index";
 
 const createClientLayer = (runtime: SqlControlPlaneRuntime) => {
-  const actorResolverLayer = Layer.succeed(
-    ControlPlaneActorResolver,
-    runtime.actorResolver,
-  );
-  const apiLayer = createControlPlaneApiLayer(runtime.serviceLayer, actorResolverLayer);
+  const apiLayer = createControlPlaneApiLayer(runtime.runtimeLayer);
 
   return HttpApiBuilder.serve().pipe(
     Layer.provide(apiLayer),

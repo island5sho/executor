@@ -11,7 +11,6 @@ import { ControlPlaneLocalLive } from "./local/http";
 import { ControlPlaneMembershipsLive } from "./memberships/http";
 import { ControlPlaneOrganizationsLive } from "./organizations/http";
 import { ControlPlanePoliciesLive } from "./policies/http";
-import { type ControlPlaneApiServiceContext } from "./service";
 import { ControlPlaneSourcesLive } from "./sources/http";
 import { ControlPlaneWorkspacesLive } from "./workspaces/http";
 
@@ -25,13 +24,19 @@ export const ControlPlaneApiLive = HttpApiBuilder.api(ControlPlaneApi).pipe(
   Layer.provide(ControlPlaneExecutionsLive),
 );
 
-export const createControlPlaneApiLayer = <EService, EResolver>(
-  serviceLayer: Layer.Layer<ControlPlaneApiServiceContext, EService, never>,
-  actorResolverLayer: Layer.Layer<ControlPlaneActorResolver, EResolver, never>,
+export type ControlPlaneApiRuntimeContext = Layer.Layer.Context<typeof ControlPlaneApiLive>;
+
+export type BuiltControlPlaneApiLayer = Layer.Layer<
+  Layer.Layer.Success<typeof ControlPlaneApiLive>,
+  Layer.Layer.Error<typeof ControlPlaneApiLive>,
+  never
+>;
+
+export const createControlPlaneApiLayer = <ERuntime>(
+  runtimeLayer: Layer.Layer<ControlPlaneApiRuntimeContext, ERuntime, never>,
 ) =>
   ControlPlaneApiLive.pipe(
-    Layer.provide(serviceLayer),
-    Layer.provide(actorResolverLayer),
+    Layer.provide(runtimeLayer),
   );
 
 export const ControlPlaneActorResolverLive = (

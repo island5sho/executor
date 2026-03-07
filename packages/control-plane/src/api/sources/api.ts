@@ -18,11 +18,15 @@ import {
   ControlPlaneStorageError,
   ControlPlaneUnauthorizedError,
 } from "../errors";
+import {
+  OptionalTrimmedNonEmptyStringSchema,
+  TrimmedNonEmptyStringSchema,
+} from "../string-schemas";
 
 const createSourcePayloadRequiredSchema = Schema.Struct({
-  name: Schema.String,
+  name: TrimmedNonEmptyStringSchema,
   kind: SourceKindSchema,
-  endpoint: Schema.String,
+  endpoint: TrimmedNonEmptyStringSchema,
 });
 
 const createSourcePayloadOptionalSchema = Schema.Struct({
@@ -47,9 +51,9 @@ export const CreateSourcePayloadSchema = Schema.extend(
 export type CreateSourcePayload = typeof CreateSourcePayloadSchema.Type;
 
 export const UpdateSourcePayloadSchema = Schema.Struct({
-  name: Schema.optional(Schema.String),
+  name: OptionalTrimmedNonEmptyStringSchema,
   kind: Schema.optional(SourceKindSchema),
-  endpoint: Schema.optional(Schema.String),
+  endpoint: OptionalTrimmedNonEmptyStringSchema,
   status: Schema.optional(SourceStatusSchema),
   enabled: Schema.optional(Schema.Boolean),
   namespace: Schema.optional(Schema.NullOr(Schema.String)),

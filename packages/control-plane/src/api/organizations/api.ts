@@ -1,9 +1,8 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
 import {
   OrganizationIdSchema,
-  OrganizationInsertSchema,
+  OrganizationStatusSchema,
   OrganizationSchema,
-  OrganizationUpdateSchema,
 } from "#schema";
 import * as Schema from "effect/Schema";
 
@@ -14,27 +13,22 @@ import {
   ControlPlaneStorageError,
   ControlPlaneUnauthorizedError,
 } from "../errors";
+import {
+  OptionalTrimmedNonEmptyStringSchema,
+  TrimmedNonEmptyStringSchema,
+} from "../string-schemas";
 
-const createOrganizationPayloadRequiredSchema = OrganizationInsertSchema.pipe(
-  Schema.pick("name"),
-);
-
-const createOrganizationPayloadOptionalSchema = OrganizationInsertSchema.pipe(
-  Schema.pick("slug"),
-  Schema.partialWith({ exact: true }),
-);
-
-export const CreateOrganizationPayloadSchema = Schema.extend(
-  createOrganizationPayloadRequiredSchema,
-  createOrganizationPayloadOptionalSchema,
-);
+export const CreateOrganizationPayloadSchema = Schema.Struct({
+  name: TrimmedNonEmptyStringSchema,
+  slug: OptionalTrimmedNonEmptyStringSchema,
+});
 
 export type CreateOrganizationPayload = typeof CreateOrganizationPayloadSchema.Type;
 
-export const UpdateOrganizationPayloadSchema = OrganizationUpdateSchema.pipe(
-  Schema.pick("name", "status"),
-  Schema.partialWith({ exact: true }),
-);
+export const UpdateOrganizationPayloadSchema = Schema.Struct({
+  name: OptionalTrimmedNonEmptyStringSchema,
+  status: Schema.optional(OrganizationStatusSchema),
+});
 
 export type UpdateOrganizationPayload = typeof UpdateOrganizationPayloadSchema.Type;
 

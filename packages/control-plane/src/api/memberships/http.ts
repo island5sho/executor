@@ -1,48 +1,16 @@
-import { HttpApiBuilder, HttpServerRequest } from "@effect/platform";
-import * as Effect from "effect/Effect";
+import { HttpApiBuilder } from "@effect/platform";
 import type { OrganizationId } from "#schema";
 
+import { requirePermission, withPolicy } from "#domain";
 import {
-  Actor,
-  ActorForbiddenError,
-  ActorUnauthenticatedError,
-  requirePermission,
-  withPolicy,
-} from "#domain";
+  createMembership,
+  listMemberships,
+  removeMembership,
+  updateMembership,
+} from "../../runtime/organizations-operations";
 
 import { ControlPlaneApi } from "../api";
-import { ControlPlaneActorResolver } from "../auth/actor-resolver";
-import {
-  ControlPlaneForbiddenError,
-  ControlPlaneUnauthorizedError,
-} from "../errors";
-import { ControlPlaneMembershipsService } from "../service";
-
-const toForbiddenError = (
-  operation: string,
-  cause: ActorForbiddenError,
-): ControlPlaneForbiddenError =>
-  new ControlPlaneForbiddenError({
-    operation,
-    message: "Access denied",
-    details: `${cause.permission} on ${cause.scope}`,
-  });
-
-const toUnauthorizedError = (
-  operation: string,
-  cause: ActorUnauthenticatedError,
-): ControlPlaneUnauthorizedError =>
-  new ControlPlaneUnauthorizedError({
-    operation,
-    message: cause.message,
-    details: "Authentication required",
-  });
-
-const resolveActor = Effect.gen(function* () {
-  const actorResolver = yield* ControlPlaneActorResolver;
-  const request = yield* HttpServerRequest.HttpServerRequest;
-  return yield* actorResolver.resolveActor({ headers: request.headers });
-});
+import { withRequestActor } from "../http-auth";
 
 const requireReadMemberships = (organizationId: OrganizationId) =>
   requirePermission({
@@ -62,77 +30,37 @@ export const ControlPlaneMembershipsLive = HttpApiBuilder.group(
   (handlers) =>
     handlers
       .handle("list", ({ path }) =>
-        Effect.gen(function* () {
-          const service = yield* ControlPlaneMembershipsService;
-          const actor = yield* resolveActor;
-
-          return yield* withPolicy(requireReadMemberships(path.organizationId))(
-            service.listMemberships(path.organizationId),
-          ).pipe(Effect.provideService(Actor, actor));
-        }).pipe(
-          Effect.catchTag("ActorUnauthenticatedError", (cause) =>
-            Effect.fail(toUnauthorizedError("memberships.list", cause)),
-          ),
-          Effect.catchTag("ActorForbiddenError", (cause) =>
-            Effect.fail(toForbiddenError("memberships.list", cause)),
+        withRequestActor("memberships.list", () =>
+          withPolicy(requireReadMemberships(path.organizationId))(
+            listMemberships(path.organizationId),
           ),
         ),
       )
       .handle("create", ({ path, payload }) =>
-        Effect.gen(function* () {
-          const service = yield* ControlPlaneMembershipsService;
-          const actor = yield* resolveActor;
-
-          return yield* withPolicy(requireWriteMemberships(path.organizationId))(
-            service.createMembership({ organizationId: path.organizationId, payload }),
-          ).pipe(Effect.provideService(Actor, actor));
-        }).pipe(
-          Effect.catchTag("ActorUnauthenticatedError", (cause) =>
-            Effect.fail(toUnauthorizedError("memberships.create", cause)),
-          ),
-          Effect.catchTag("ActorForbiddenError", (cause) =>
-            Effect.fail(toForbiddenError("memberships.create", cause)),
+        withRequestActor("memberships.create", () =>
+          withPolicy(requireWriteMemberships(path.organizationId))(
+            createMembership({ organizationId: path.organizationId, payload }),
           ),
         ),
       )
       .handle("update", ({ path, payload }) =>
-        Effect.gen(function* () {
-          const service = yield* ControlPlaneMembershipsService;
-          const actor = yield* resolveActor;
-
-          return yield* withPolicy(requireWriteMemberships(path.organizationId))(
-            service.updateMembership({
+        withRequestActor("memberships.update", () =>
+          withPolicy(requireWriteMemberships(path.organizationId))(
+            updateMembership({
               organizationId: path.organizationId,
               accountId: path.accountId,
               payload,
             }),
-          ).pipe(Effect.provideService(Actor, actor));
-        }).pipe(
-          Effect.catchTag("ActorUnauthenticatedError", (cause) =>
-            Effect.fail(toUnauthorizedError("memberships.update", cause)),
-          ),
-          Effect.catchTag("ActorForbiddenError", (cause) =>
-            Effect.fail(toForbiddenError("memberships.update", cause)),
           ),
         ),
       )
       .handle("remove", ({ path }) =>
-        Effect.gen(function* () {
-          const service = yield* ControlPlaneMembershipsService;
-          const actor = yield* resolveActor;
-
-          return yield* withPolicy(requireWriteMemberships(path.organizationId))(
-            service.removeMembership({
+        withRequestActor("memberships.remove", () =>
+          withPolicy(requireWriteMemberships(path.organizationId))(
+            removeMembership({
               organizationId: path.organizationId,
               accountId: path.accountId,
             }),
-          ).pipe(Effect.provideService(Actor, actor));
-        }).pipe(
-          Effect.catchTag("ActorUnauthenticatedError", (cause) =>
-            Effect.fail(toUnauthorizedError("memberships.remove", cause)),
-          ),
-          Effect.catchTag("ActorForbiddenError", (cause) =>
-            Effect.fail(toForbiddenError("memberships.remove", cause)),
           ),
         ),
       ),
