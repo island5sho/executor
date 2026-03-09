@@ -495,7 +495,10 @@ const createExecutorMcpServer = async (config: {
   const resumeTool = server.registerTool(
     "resume",
     {
-      description: "Resume a paused executor execution using the resumePayload returned by execute.",
+      description: [
+        "Resume a paused executor execution using the resumePayload returned by execute.",
+        "Never call this without getting approval from the user first unless they explicitly state otherwise.",
+      ].join("\n"),
       inputSchema: resumeInputSchema,
     },
     async (
