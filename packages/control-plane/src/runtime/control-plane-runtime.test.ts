@@ -12,6 +12,8 @@ import {
   ExecutionInteractionIdSchema,
   SecretMaterialIdSchema,
   SourceIdSchema,
+  SourceRecipeIdSchema,
+  SourceRecipeRevisionIdSchema,
 } from "#schema";
 import type { ToolPath } from "@executor/codemode-core";
 
@@ -278,6 +280,8 @@ describe("control-plane-runtime", () => {
       yield* runtime.persistence.rows.sources.insert({
         id: sourceId,
         workspaceId: installation.workspaceId,
+        recipeId: SourceRecipeIdSchema.make(`src_recipe_${sourceId}`),
+        recipeRevisionId: SourceRecipeRevisionIdSchema.make(`src_recipe_rev_${sourceId}`),
         name: "GitHub",
         kind: "openapi",
         endpoint: "https://api.github.com",
@@ -285,6 +289,7 @@ describe("control-plane-runtime", () => {
         enabled: true,
         namespace: "github",
         transport: null,
+        bindingConfigJson: null,
         queryParamsJson: null,
         headersJson: null,
         specUrl: "https://example.com/github-openapi.yaml",
@@ -435,6 +440,8 @@ describe("control-plane-runtime", () => {
       yield* runtime.persistence.rows.sources.insert({
         id: sourceId,
         workspaceId: installation.workspaceId,
+        recipeId: SourceRecipeIdSchema.make(`src_recipe_${sourceId}`),
+        recipeRevisionId: SourceRecipeRevisionIdSchema.make(`src_recipe_rev_${sourceId}`),
         name: "GitHub",
         kind: "openapi",
         endpoint: "https://api.github.com",
@@ -442,6 +449,7 @@ describe("control-plane-runtime", () => {
         enabled: true,
         namespace: "github",
         transport: null,
+        bindingConfigJson: null,
         queryParamsJson: null,
         headersJson: null,
         specUrl: "https://example.com/github-openapi.yaml",

@@ -9,17 +9,21 @@ import {
   SecretMaterialIdSchema,
   SourceAuthSessionIdSchema,
   SourceIdSchema,
+  SourceRecipeIdSchema,
+  SourceRecipeRevisionIdSchema,
   WorkspaceIdSchema,
 } from "#schema";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Scope from "effect/Scope";
 
 import {
   createSqlControlPlanePersistence,
   type SqlControlPlanePersistence,
 } from "./index";
 
-const makePersistence = Effect.acquireRelease(
+const makePersistence: Effect.Effect<SqlControlPlanePersistence, unknown, Scope.Scope> =
+  Effect.acquireRelease(
   createSqlControlPlanePersistence({
     localDataDir: ":memory:",
   }),
@@ -28,7 +32,7 @@ const makePersistence = Effect.acquireRelease(
       try: () => persistence.close(),
       catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
     }).pipe(Effect.orDie),
-);
+  );
 
 const seedWorkspaceCredentialState = (input: {
   persistence: SqlControlPlanePersistence;
@@ -36,12 +40,17 @@ const seedWorkspaceCredentialState = (input: {
   organizationId: ReturnType<typeof OrganizationIdSchema.make>;
   workspaceId: ReturnType<typeof WorkspaceIdSchema.make>;
   sourceId: ReturnType<typeof SourceIdSchema.make>;
-}) =>
+}): Effect.Effect<{
+  tokenId: ReturnType<typeof SecretMaterialIdSchema.make>;
+  refreshId: ReturnType<typeof SecretMaterialIdSchema.make>;
+}, unknown, never> =>
   Effect.gen(function* () {
     const now = Date.now();
     const credentialId = CredentialIdSchema.make(`cred_${input.workspaceId}`);
     const tokenId = SecretMaterialIdSchema.make(`sec_${input.workspaceId}_token`);
     const refreshId = SecretMaterialIdSchema.make(`sec_${input.workspaceId}_refresh`);
+    const recipeId = SourceRecipeIdSchema.make(`src_recipe_${input.sourceId}`);
+    const recipeRevisionId = SourceRecipeRevisionIdSchema.make(`src_recipe_rev_${input.sourceId}`);
 
     yield* input.persistence.rows.organizations.insert({
       id: input.organizationId,
@@ -63,6 +72,8 @@ const seedWorkspaceCredentialState = (input: {
     yield* input.persistence.rows.sources.insert({
       id: input.sourceId,
       workspaceId: input.workspaceId,
+      recipeId,
+      recipeRevisionId,
       name: "Github",
       kind: "openapi",
       endpoint: "https://api.github.com",
@@ -70,6 +81,7 @@ const seedWorkspaceCredentialState = (input: {
       enabled: true,
       namespace: "github",
       transport: null,
+      bindingConfigJson: null,
       queryParamsJson: null,
       headersJson: null,
       specUrl: "https://api.github.com/openapi.json",
@@ -99,6 +111,8 @@ const seedWorkspaceCredentialState = (input: {
     yield* input.persistence.rows.credentials.upsert({
       id: credentialId,
       workspaceId: input.workspaceId,
+      sourceId: input.sourceId,
+      actorAccountId: input.accountId,
       authKind: "oauth2",
       authHeaderName: "Authorization",
       authPrefix: "Bearer ",
@@ -109,33 +123,29 @@ const seedWorkspaceCredentialState = (input: {
       createdAt: now,
       updatedAt: now,
     });
-    yield* input.persistence.rows.sourceCredentialBindings.upsert({
-      id: `src_cred_bind_${input.workspaceId}`,
-      workspaceId: input.workspaceId,
-      sourceId: input.sourceId,
-      credentialId,
-      createdAt: now,
-      updatedAt: now,
-    });
     yield* input.persistence.rows.sourceAuthSessions.upsert({
       id: SourceAuthSessionIdSchema.make(`src_auth_${input.workspaceId}`),
       workspaceId: input.workspaceId,
       sourceId: input.sourceId,
+      actorAccountId: input.accountId,
       executionId: null,
       interactionId: null,
-      strategy: "oauth2_authorization_code",
+      providerKind: "mcp_oauth",
       status: "pending",
-      endpoint: "https://api.github.com",
       state: `state_${input.workspaceId}`,
-      redirectUri: "http://127.0.0.1/callback",
-      scope: null,
-      resourceMetadataUrl: null,
-      authorizationServerUrl: null,
-      resourceMetadataJson: null,
-      authorizationServerMetadataJson: null,
-      clientInformationJson: null,
-      codeVerifier: "verifier",
-      authorizationUrl: "https://example.com/auth",
+      sessionDataJson: JSON.stringify({
+        kind: "mcp_oauth",
+        endpoint: "https://api.github.com",
+        redirectUri: "http://127.0.0.1/callback",
+        scope: null,
+        resourceMetadataUrl: null,
+        authorizationServerUrl: null,
+        resourceMetadataJson: null,
+        authorizationServerMetadataJson: null,
+        clientInformationJson: null,
+        codeVerifier: "verifier",
+        authorizationUrl: "https://example.com/auth",
+      }),
       errorText: null,
       completedAt: null,
       createdAt: now,
@@ -176,6 +186,8 @@ describe("control-plane-persistence-drizzle", () => {
       yield* persistence.rows.sources.insert({
         id: SourceIdSchema.make("src_1"),
         workspaceId,
+        recipeId: SourceRecipeIdSchema.make("src_recipe_1"),
+        recipeRevisionId: SourceRecipeRevisionIdSchema.make("src_recipe_rev_1"),
         name: "Github",
         kind: "openapi",
         endpoint: "https://api.github.com",
@@ -183,6 +195,7 @@ describe("control-plane-persistence-drizzle", () => {
         enabled: true,
         namespace: "github",
         transport: null,
+        bindingConfigJson: null,
         queryParamsJson: null,
         headersJson: null,
         specUrl: "https://api.github.com/openapi.json",
@@ -291,7 +304,6 @@ describe("control-plane-persistence-drizzle", () => {
       expect(removed).toBe(true);
       expect(Option.isNone(yield* persistence.rows.workspaces.getById(workspaceId))).toBe(true);
       expect(yield* persistence.rows.credentials.listByWorkspaceId(workspaceId)).toHaveLength(0);
-      expect(yield* persistence.rows.sourceCredentialBindings.listByWorkspaceId(workspaceId)).toHaveLength(0);
       expect(yield* persistence.rows.sourceAuthSessions.listByWorkspaceId(workspaceId)).toHaveLength(0);
       expect(Option.isNone(yield* persistence.rows.secretMaterials.getById(tokenId))).toBe(true);
       expect(Option.isNone(yield* persistence.rows.secretMaterials.getById(refreshId))).toBe(true);
@@ -318,7 +330,6 @@ describe("control-plane-persistence-drizzle", () => {
       expect(removed).toBe(true);
       expect(Option.isNone(yield* persistence.rows.workspaces.getById(workspaceId))).toBe(true);
       expect(yield* persistence.rows.credentials.listByWorkspaceId(workspaceId)).toHaveLength(0);
-      expect(yield* persistence.rows.sourceCredentialBindings.listByWorkspaceId(workspaceId)).toHaveLength(0);
       expect(yield* persistence.rows.sourceAuthSessions.listByWorkspaceId(workspaceId)).toHaveLength(0);
       expect(Option.isNone(yield* persistence.rows.secretMaterials.getById(tokenId))).toBe(true);
       expect(Option.isNone(yield* persistence.rows.secretMaterials.getById(refreshId))).toBe(true);

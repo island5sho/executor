@@ -11,11 +11,16 @@ import {
 } from "#schema";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Scope from "effect/Scope";
 
-import { createSqlControlPlanePersistence } from "../persistence";
+import {
+  createSqlControlPlanePersistence,
+  type SqlControlPlanePersistence,
+} from "../persistence";
 import { persistSource, removeSourceById } from "./source-store";
 
-const makePersistence = Effect.acquireRelease(
+const makePersistence: Effect.Effect<SqlControlPlanePersistence, unknown, Scope.Scope> =
+  Effect.acquireRelease(
   createSqlControlPlanePersistence({
     localDataDir: ":memory:",
   }),
@@ -24,7 +29,7 @@ const makePersistence = Effect.acquireRelease(
       try: () => persistence.close(),
       catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
     }).pipe(Effect.orDie),
-);
+  );
 
 const makeOpenApiSource = (input: {
   workspaceId: Source["workspaceId"];
@@ -122,21 +127,25 @@ describe("source-store", () => {
         id: SourceAuthSessionIdSchema.make("src_auth_source_store"),
         workspaceId,
         sourceId,
+        actorAccountId: accountId,
         executionId: null,
         interactionId: null,
-        strategy: "oauth2_authorization_code",
+        providerKind: "mcp_oauth",
         status: "pending",
-        endpoint: "https://api.github.com",
         state: "state_source_store",
-        redirectUri: "http://127.0.0.1/callback",
-        scope: null,
-        resourceMetadataUrl: null,
-        authorizationServerUrl: null,
-        resourceMetadataJson: null,
-        authorizationServerMetadataJson: null,
-        clientInformationJson: null,
-        codeVerifier: "verifier",
-        authorizationUrl: "https://example.com/auth",
+        sessionDataJson: JSON.stringify({
+          kind: "mcp_oauth",
+          endpoint: "https://api.github.com",
+          redirectUri: "http://127.0.0.1/callback",
+          scope: null,
+          resourceMetadataUrl: null,
+          authorizationServerUrl: null,
+          resourceMetadataJson: null,
+          authorizationServerMetadataJson: null,
+          clientInformationJson: null,
+          codeVerifier: "verifier",
+          authorizationUrl: "https://example.com/auth",
+        }),
         errorText: null,
         completedAt: null,
         createdAt: now,
@@ -177,7 +186,6 @@ describe("source-store", () => {
       expect(Option.isNone(yield* persistence.rows.secretMaterials.getById(secondTokenId))).toBe(true);
       expect(yield* persistence.rows.sources.listByWorkspaceId(workspaceId)).toHaveLength(0);
       expect(yield* persistence.rows.credentials.listByWorkspaceId(workspaceId)).toHaveLength(0);
-      expect(yield* persistence.rows.sourceCredentialBindings.listByWorkspaceId(workspaceId)).toHaveLength(0);
       expect(yield* persistence.rows.sourceAuthSessions.listByWorkspaceId(workspaceId)).toHaveLength(0);
     }),
   );

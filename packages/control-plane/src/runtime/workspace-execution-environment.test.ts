@@ -13,6 +13,11 @@ import * as NodeHttpServer from "@effect/platform-node/NodeHttpServer";
 import { createMcpExpressApp } from "@modelcontextprotocol/sdk/server/express.js";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import {
+  buildOpenApiToolPresentation,
+  compileOpenApiToolDefinitions,
+  extractOpenApiManifest,
+} from "@executor/codemode-openapi";
 import { describe, expect, it } from "@effect/vitest";
 import {
   graphql,
@@ -28,11 +33,11 @@ import {
 } from "graphql";
 import {
   AccountIdSchema,
-  CredentialIdSchema,
   ExecutionIdSchema,
   SecretMaterialIdSchema,
   SourceIdSchema,
   WorkspaceIdSchema,
+  type Source,
 } from "#schema";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
@@ -41,7 +46,7 @@ import * as Layer from "effect/Layer";
 import * as Scope from "effect/Scope";
 import * as Option from "effect/Option";
 import { Schema } from "effect";
-import { z } from "zod/v4";
+import * as z from "zod/v4";
 
 import {
   createSqlControlPlanePersistence,
@@ -54,6 +59,8 @@ import {
   type RuntimeSourceAuthService,
 } from "./source-auth-service";
 import { createLiveExecutionManager } from "./live-execution";
+import { persistSource } from "./source-store";
+import { persistMcpToolArtifactsFromManifest } from "./tool-artifacts";
 import { createWorkspaceExecutionEnvironmentResolver } from "./workspace-execution-environment";
 
 type CountedMcpServer = {
@@ -77,6 +84,13 @@ type GraphqlServer = {
   seenAuthHeaders: Array<string | null>;
   close: () => Promise<void>;
 };
+
+const normalizeSearchText = (...parts: ReadonlyArray<string | null | undefined>): string =>
+  parts
+    .flatMap((part) => (part ? [part.trim()] : []))
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
 
 const GraphqlUserType = new GraphQLObjectType({
   name: "User",
@@ -271,7 +285,8 @@ const testGraphqlSchema = new GraphQLSchema({
 const closeScope = (scope: Scope.CloseableScope) =>
   Scope.close(scope, Exit.void).pipe(Effect.orDie);
 
-const makePersistence = Effect.acquireRelease(
+const makePersistence: Effect.Effect<SqlControlPlanePersistence, unknown, Scope.Scope> =
+  Effect.acquireRelease(
   createSqlControlPlanePersistence({
     localDataDir: ":memory:",
   }),
@@ -280,7 +295,7 @@ const makePersistence = Effect.acquireRelease(
       try: () => persistence.close(),
       catch: (cause) => (cause instanceof Error ? cause : new Error(String(cause))),
     }).pipe(Effect.orDie),
-);
+  );
 
 const makeCountedMcpServer = Effect.acquireRelease(
   Effect.promise<CountedMcpServer>(
@@ -292,8 +307,6 @@ const makeCountedMcpServer = Effect.acquireRelease(
         };
         let closed = false;
         const app = createMcpExpressApp({ host: "127.0.0.1" });
-        const transports: Record<string, StreamableHTTPServerTransport> = {};
-        const servers: Record<string, McpServer> = {};
 
         const createServer = () => {
           const server = new McpServer(
@@ -340,105 +353,33 @@ const makeCountedMcpServer = Effect.acquireRelease(
           }
         };
 
-        app.post("/mcp", async (req: any, res: any) => {
-          countMethods(req.body);
+        const handle = async (req: any, res: any, parsedBody?: unknown) => {
+          countMethods(parsedBody);
 
-          const sessionIdHeader = req.headers["mcp-session-id"];
-          const sessionId =
-            typeof sessionIdHeader === "string"
-              ? sessionIdHeader
-              : Array.isArray(sessionIdHeader)
-                ? sessionIdHeader[0]
-                : undefined;
+          const server = createServer();
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined,
+          });
 
           try {
-            let transport: StreamableHTTPServerTransport;
-
-            if (sessionId && transports[sessionId]) {
-              transport = transports[sessionId];
-            } else {
-              transport = new StreamableHTTPServerTransport({
-                sessionIdGenerator: () => randomUUID(),
-                onsessioninitialized: (newSessionId) => {
-                  transports[newSessionId] = transport;
-                },
-              });
-
-              transport.onclose = () => {
-                const closedSessionId = transport.sessionId;
-                if (closedSessionId && transports[closedSessionId]) {
-                  delete transports[closedSessionId];
-                }
-                if (closedSessionId && servers[closedSessionId]) {
-                  void servers[closedSessionId].close().catch(() => undefined);
-                  delete servers[closedSessionId];
-                }
-              };
-
-              const server = createServer();
-              await server.connect(transport);
-              const newSessionId = transport.sessionId;
-              if (newSessionId) {
-                servers[newSessionId] = server;
-              }
-            }
-
-            await transport.handleRequest(req, res, req.body);
-          } catch (error) {
-            if (!res.headersSent) {
-              res.status(500).json({
-                jsonrpc: "2.0",
-                error: {
-                  code: -32603,
-                  message:
-                    error instanceof Error ? error.message : "Internal server error",
-                },
-                id: null,
-              });
-            }
+            await server.connect(transport);
+            await transport.handleRequest(req, res, parsedBody);
+          } finally {
+            await transport.close().catch(() => undefined);
+            await server.close().catch(() => undefined);
           }
+        };
+
+        app.post("/mcp", async (req: any, res: any) => {
+          await handle(req, res, req.body);
         });
 
         app.get("/mcp", async (req: any, res: any) => {
-          const sessionIdHeader = req.headers["mcp-session-id"];
-          const sessionId =
-            typeof sessionIdHeader === "string"
-              ? sessionIdHeader
-              : Array.isArray(sessionIdHeader)
-                ? sessionIdHeader[0]
-                : undefined;
-
-          if (!sessionId || !transports[sessionId]) {
-            res.status(400).send("Invalid or missing session ID");
-            return;
-          }
-
-          await transports[sessionId].handleRequest(req, res);
+          await handle(req, res);
         });
 
         app.delete("/mcp", async (req: any, res: any) => {
-          const sessionIdHeader = req.headers["mcp-session-id"];
-          const sessionId =
-            typeof sessionIdHeader === "string"
-              ? sessionIdHeader
-              : Array.isArray(sessionIdHeader)
-                ? sessionIdHeader[0]
-                : undefined;
-
-          if (!sessionId || !transports[sessionId]) {
-            res.status(400).send("Invalid or missing session ID");
-            return;
-          }
-
-          const transport = transports[sessionId];
-          await transport.handleRequest(req, res, req.body);
-          await transport.close();
-          delete transports[sessionId];
-
-          if (servers[sessionId]) {
-            await servers[sessionId].close().catch(() => undefined);
-            delete servers[sessionId];
-          }
+          await handle(req, res, req.body);
         });
 
         const listener = app.listen(0, "127.0.0.1", () => {
@@ -456,14 +397,6 @@ const makeCountedMcpServer = Effect.acquireRelease(
                 return;
               }
               closed = true;
-
-              for (const transport of Object.values(transports)) {
-                await transport.close().catch(() => undefined);
-              }
-
-              for (const server of Object.values(servers)) {
-                await server.close().catch(() => undefined);
-              }
 
               await new Promise<void>((closeResolve, closeReject) => {
                 listener.close((error: Error | undefined) => {
@@ -637,11 +570,10 @@ const persistConnectedEchoTool = (input: {
   endpoint: string;
   workspaceId: WorkspaceId;
   sourceId: SourceId;
-}) =>
+}): Effect.Effect<void, unknown, never> =>
   Effect.gen(function* () {
     const now = Date.now();
-
-    yield* input.persistence.rows.sources.insert({
+    const source: Source = {
       id: input.sourceId,
       workspaceId: input.workspaceId,
       name: "Counted MCP",
@@ -650,54 +582,36 @@ const persistConnectedEchoTool = (input: {
       status: "connected",
       enabled: true,
       namespace: "counted",
-      transport: "auto",
-      queryParamsJson: null,
-      headersJson: null,
+      transport: "streamable-http",
+      queryParams: null,
+      headers: null,
       specUrl: null,
-      defaultHeadersJson: null,
+      defaultHeaders: null,
+      auth: { kind: "none" },
       sourceHash: null,
-      sourceDocumentText: null,
       lastError: null,
       createdAt: now,
       updatedAt: now,
-    });
+    };
 
-    yield* input.persistence.rows.toolArtifacts.replaceForSource({
-      workspaceId: input.workspaceId,
-      sourceId: input.sourceId,
-      artifacts: [{
-        artifact: {
-          workspaceId: input.workspaceId,
-          path: "counted.echo",
-          toolId: "echo",
-          sourceId: input.sourceId,
-          title: "echo",
-          description: "Echo the provided string",
-          searchNamespace: "counted.echo",
-          searchText: "counted.echo echo provided string",
-          inputSchemaJson: JSON.stringify({
-            type: "object",
-            properties: {
-              value: {
-                type: "string",
-              },
+    yield* persistSource(input.persistence.rows, source);
+    yield* persistMcpToolArtifactsFromManifest({
+      rows: input.persistence.rows,
+      source,
+      manifestEntries: [{
+        toolId: "echo",
+        toolName: "echo",
+        description: "Echo the provided string",
+        inputSchemaJson: JSON.stringify({
+          type: "object",
+          properties: {
+            value: {
+              type: "string",
             },
-            required: ["value"],
-            additionalProperties: false,
-          }),
-          outputSchemaJson: null,
-          providerKind: "mcp",
-          mcpToolName: "echo",
-          openApiMethod: null,
-          openApiPathTemplate: null,
-          openApiOperationHash: null,
-          openApiRawToolId: null,
-          openApiOperationId: null,
-          openApiTagsJson: null,
-          openApiRequestBodyRequired: null,
-          createdAt: now,
-          updatedAt: now,
-        },
+          },
+          required: ["value"],
+          additionalProperties: false,
+        }),
       }],
     });
   });
@@ -711,7 +625,7 @@ const persistConnectedGithubOpenApiSource = (input: {
     providerId: string;
     handle: string;
   } | null;
-}) =>
+}): Effect.Effect<void, unknown, never> =>
   Effect.gen(function* () {
     const now = Date.now();
     const openApiDocumentText = JSON.stringify({
@@ -813,7 +727,7 @@ const persistConnectedGithubOpenApiSource = (input: {
       },
     });
 
-    yield* input.persistence.rows.sources.insert({
+    const source: Source = {
       id: input.sourceId,
       workspaceId: input.workspaceId,
       name: "GitHub",
@@ -823,42 +737,128 @@ const persistConnectedGithubOpenApiSource = (input: {
       enabled: true,
       namespace: "github",
       transport: null,
-      queryParamsJson: null,
-      headersJson: null,
+      queryParams: null,
+      headers: null,
       specUrl: "https://example.com/github-openapi.json",
-      defaultHeadersJson: null,
+      defaultHeaders: null,
+      auth: input.auth
+        ? {
+            kind: "bearer",
+            headerName: "Authorization",
+            prefix: "Bearer ",
+            token: {
+              providerId: input.auth.providerId,
+              handle: input.auth.handle,
+            },
+          }
+        : { kind: "none" },
       sourceHash: null,
-      sourceDocumentText: openApiDocumentText,
       lastError: null,
       createdAt: now,
       updatedAt: now,
-    });
-
-    if (input.auth) {
-      const credentialId = CredentialIdSchema.make(`cred_${randomUUID()}`);
-      yield* input.persistence.rows.credentials.upsert({
-        id: credentialId,
-        workspaceId: input.workspaceId,
-        authKind: "bearer",
-        authHeaderName: "Authorization",
-        authPrefix: "Bearer ",
-        tokenProviderId: input.auth.providerId,
-        tokenHandle: input.auth.handle,
-        refreshTokenProviderId: null,
-        refreshTokenHandle: null,
-        createdAt: now,
-        updatedAt: now,
-      });
-      yield* input.persistence.rows.sourceCredentialBindings.upsert({
-        id: `src_cred_bind_${randomUUID()}`,
-        workspaceId: input.workspaceId,
-        sourceId: input.sourceId,
-        credentialId,
-        createdAt: now,
-        updatedAt: now,
-      });
     };
 
+    yield* persistSource(input.persistence.rows, source);
+
+    const manifest = yield* extractOpenApiManifest(
+      source.name,
+      openApiDocumentText,
+    ).pipe(
+      Effect.mapError((cause) =>
+        cause instanceof Error ? cause : new Error(String(cause)),
+      ),
+    );
+    const definitions = compileOpenApiToolDefinitions(manifest);
+    const sourceRecord = yield* input.persistence.rows.sources.getByWorkspaceAndId(
+      input.workspaceId,
+      input.sourceId,
+    );
+    if (Option.isNone(sourceRecord)) {
+      return yield* Effect.fail(new Error(`Missing stored source ${input.sourceId}`));
+    }
+
+    yield* input.persistence.rows.sourceRecipeRevisions.update(
+      sourceRecord.value.recipeRevisionId,
+      {
+        manifestJson: JSON.stringify(manifest),
+        manifestHash: manifest.sourceHash,
+        updatedAt: now,
+      },
+    );
+    yield* input.persistence.rows.sourceRecipeDocuments.replaceForRevision({
+      recipeRevisionId: sourceRecord.value.recipeRevisionId,
+      documents: [{
+        id: `src_recipe_doc_${randomUUID()}`,
+        recipeRevisionId: sourceRecord.value.recipeRevisionId,
+        documentKind: "openapi",
+        documentKey: source.specUrl ?? source.endpoint,
+        contentText: openApiDocumentText,
+        contentHash: manifest.sourceHash,
+        fetchedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      }],
+    });
+    yield* input.persistence.rows.sourceRecipeOperations.replaceForRevision({
+      recipeRevisionId: sourceRecord.value.recipeRevisionId,
+      operations: definitions.map((definition) => {
+        const presentation = buildOpenApiToolPresentation({
+          manifest,
+          definition,
+        });
+        const method = definition.method.toUpperCase();
+
+        return {
+          id: `src_recipe_op_${randomUUID()}`,
+          recipeRevisionId: sourceRecord.value.recipeRevisionId,
+          operationKey: definition.toolId,
+          transportKind: "http",
+          toolId: definition.toolId,
+          title: definition.name,
+          description: definition.description,
+          operationKind:
+            method === "GET" || method === "HEAD"
+              ? "read"
+              : method === "DELETE"
+                ? "delete"
+                : "write",
+          searchText: normalizeSearchText(
+            definition.toolId,
+            definition.name,
+            definition.description,
+            definition.rawToolId,
+            definition.operationId ?? undefined,
+            definition.method,
+            definition.path,
+            definition.group,
+            definition.leaf,
+            definition.tags.join(" "),
+          ),
+          inputSchemaJson: presentation.inputSchemaJson ?? null,
+          outputSchemaJson: presentation.outputSchemaJson ?? null,
+          providerKind: "openapi",
+          providerDataJson: presentation.providerDataJson,
+          mcpToolName: null,
+          openApiMethod: definition.method,
+          openApiPathTemplate: definition.path,
+          openApiOperationHash: definition.operationHash,
+          openApiRawToolId: definition.rawToolId,
+          openApiOperationId: definition.operationId ?? null,
+          openApiTagsJson: JSON.stringify(definition.tags),
+          openApiRequestBodyRequired: definition.invocation.requestBody?.required ?? null,
+          graphqlOperationType: null,
+          graphqlOperationName: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+      }),
+    });
+    yield* input.persistence.rows.sources.update(input.workspaceId, input.sourceId, {
+      sourceHash: manifest.sourceHash,
+      updatedAt: now,
+    });
+
+    return;
   });
 
 const makeResolver = (persistence: SqlControlPlanePersistence) =>
@@ -1108,12 +1108,15 @@ describe("workspace-execution-environment", () => {
       );
       expect(Option.isSome(storedSource)).toBe(true);
       if (Option.isSome(storedSource)) {
-        expect(storedSource.value.sourceDocumentText).toContain('"operationId":"repos.getRepo"');
+        const documents = yield* persistence.rows.sourceRecipeDocuments.listByRevisionId(
+          storedSource.value.recipeRevisionId,
+        );
+        expect(documents[0]?.contentText).toContain('"operationId":"repos.getRepo"');
       }
 
       const freshEnvironment = yield* resolveEnvironment({
         workspaceId,
-        accountId: AccountIdSchema.make("acc_add_openapi_fresh"),
+        accountId: AccountIdSchema.make("acc_add_openapi"),
         executionId: ExecutionIdSchema.make("exec_add_openapi_fresh"),
       });
 
@@ -1218,12 +1221,15 @@ describe("workspace-execution-environment", () => {
       );
       expect(Option.isSome(storedSource)).toBe(true);
       if (Option.isSome(storedSource)) {
-        expect(storedSource.value.sourceDocumentText).toContain('"__schema"');
+        const documents = yield* persistence.rows.sourceRecipeDocuments.listByRevisionId(
+          storedSource.value.recipeRevisionId,
+        );
+        expect(documents[0]?.contentText).toContain('"__schema"');
       }
 
       const freshEnvironment = yield* resolveEnvironment({
         workspaceId,
-        accountId: AccountIdSchema.make("acc_add_graphql_fresh"),
+        accountId: AccountIdSchema.make("acc_add_graphql"),
         executionId: ExecutionIdSchema.make("exec_add_graphql_fresh"),
         onElicitation: () =>
           Effect.succeed({
