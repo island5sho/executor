@@ -87,13 +87,13 @@ const createIsolatedLocalExecutorServer = (
 
 const writeConfiguredLocalMcpSource = (input: {
   workspaceRoot: string;
-  configKey: string;
+  sourceId: string;
   endpoint: string;
   name?: string;
   namespace?: string;
 }) =>
   Effect.gen(function* () {
-    const sourceId = SourceIdSchema.make(input.configKey);
+    const sourceId = SourceIdSchema.make(input.sourceId);
     const context = yield* resolveLocalWorkspaceContext({
       workspaceRoot: input.workspaceRoot,
     });
@@ -103,10 +103,10 @@ const writeConfiguredLocalMcpSource = (input: {
       context,
       config: {
         sources: {
-          [input.configKey]: {
+          [input.sourceId]: {
             kind: "mcp",
             name: input.name ?? "Demo",
-            namespace: input.namespace ?? input.configKey,
+            namespace: input.namespace ?? input.sourceId,
             connection: {
               endpoint: input.endpoint,
             },
@@ -126,7 +126,7 @@ const writeConfiguredLocalMcpSource = (input: {
       endpoint: input.endpoint,
       status: "connected" as const,
       enabled: true,
-      namespace: input.namespace ?? input.configKey,
+      namespace: input.namespace ?? input.sourceId,
       bindingVersion: 1,
       binding: {
         transport: "streamable-http",
@@ -1344,7 +1344,7 @@ describe("local-executor-server", () => {
           approvalMode: "auto",
         },
       });
-      expect(policy.scopeType).toBe("workspace");
+      expect(policy.key).toBe("dns.records.createRecord");
 
       const automatic = yield* client.executions.create({
         path: {
@@ -1451,7 +1451,7 @@ describe("local-executor-server", () => {
       });
       yield* writeConfiguredLocalMcpSource({
         workspaceRoot: server.workspaceRoot,
-        configKey: "demo",
+        sourceId: "demo",
         endpoint: "http://127.0.0.1:PORT/mcp",
         name: "Demo",
         namespace: "demo",

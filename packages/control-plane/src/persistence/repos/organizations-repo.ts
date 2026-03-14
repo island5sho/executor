@@ -197,10 +197,6 @@ export const createOrganizationsRepo = (
         });
 
         await tx
-          .delete(tables.policiesTable)
-          .where(inArray(tables.policiesTable.workspaceId, workspaceIds));
-
-        await tx
           .delete(tables.workspacesTable)
           .where(inArray(tables.workspacesTable.id, workspaceIds));
 
@@ -218,10 +214,6 @@ export const createOrganizationsRepo = (
       await tx
         .delete(tables.organizationMembershipsTable)
         .where(eq(tables.organizationMembershipsTable.organizationId, organizationId));
-
-      await tx
-        .delete(tables.policiesTable)
-        .where(eq(tables.policiesTable.organizationId, organizationId));
 
       const deleted = await tx
         .delete(tables.organizationsTable)

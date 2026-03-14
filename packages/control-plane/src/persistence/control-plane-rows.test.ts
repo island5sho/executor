@@ -6,7 +6,6 @@ import {
   McpSourceAuthSessionDataJsonSchema,
   OrganizationIdSchema,
   OrganizationMemberIdSchema,
-  PolicyIdSchema,
   SecretMaterialIdSchema,
   StaticBearerAuthArtifactConfigJsonSchema,
   StaticOAuth2AuthArtifactConfigJsonSchema,
@@ -293,36 +292,12 @@ describe("control-plane-persistence-drizzle", () => {
         updatedAt: now,
       });
 
-      yield* persistence.rows.policies.insert({
-        id: PolicyIdSchema.make("pol_1"),
-        configKey: null,
-        scopeType: "workspace",
-        organizationId,
-        workspaceId,
-        targetAccountId: null,
-        clientId: null,
-        resourceType: "tool_path",
-        resourcePattern: "source.github.*",
-        matchType: "glob",
-        effect: "allow",
-        approvalMode: "auto",
-        argumentConditionsJson: null,
-        priority: 10,
-        enabled: true,
-        createdAt: now,
-        updatedAt: now,
-      });
-
       const workspace = yield* persistence.rows.workspaces.getById(workspaceId);
       assertTrue(Option.isSome(workspace));
 
       const sources = yield* persistence.rows.sources.listByWorkspaceId(workspaceId);
       expect(sources).toHaveLength(1);
       expect(sources[0]?.name).toBe("Github");
-
-      const policies = yield* persistence.rows.policies.listByWorkspaceId(workspaceId);
-      expect(policies).toHaveLength(1);
-      expect(policies[0]?.resourcePattern).toBe("source.github.*");
     }),
   );
 

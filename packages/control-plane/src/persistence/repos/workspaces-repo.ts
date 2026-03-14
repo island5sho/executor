@@ -130,15 +130,6 @@ export const createWorkspacesRepo = (
       });
 
       await tx
-        .delete(tables.policiesTable)
-        .where(
-          and(
-            eq(tables.policiesTable.scopeType, "workspace"),
-            eq(tables.policiesTable.workspaceId, workspaceId),
-          ),
-        );
-
-      await tx
         .delete(tables.localInstallationsTable)
         .where(eq(tables.localInstallationsTable.workspaceId, workspaceId));
 

@@ -72,12 +72,8 @@ export {
   type SourceAuthSessionStatus,
 } from "./models/source-auth-session";
 export {
-  PolicyApprovalModeSchema,
-  PolicyEffectSchema,
-  PolicyMatchTypeSchema,
-  PolicyResourceTypeSchema,
-  type PolicyApprovalMode,
-  type PolicyEffect,
-  type PolicyMatchType,
-  type PolicyResourceType,
+  LocalWorkspacePolicyApprovalModeSchema,
+  LocalWorkspacePolicyEffectSchema,
+  type LocalWorkspacePolicyApprovalMode,
+  type LocalWorkspacePolicyEffect,
 } from "./models/policy";

@@ -1,9 +1,9 @@
 import { HttpApiEndpoint, HttpApiGroup, HttpApiSchema } from "@effect/platform";
 import {
+  LocalWorkspacePolicyApprovalModeSchema,
+  LocalWorkspacePolicyEffectSchema,
+  LocalWorkspacePolicySchema,
   PolicyIdSchema,
-  PolicyApprovalModeSchema,
-  PolicyEffectSchema,
-  PolicySchema,
   WorkspaceIdSchema,
 } from "#schema";
 import * as Schema from "effect/Schema";
@@ -19,8 +19,8 @@ import { OptionalTrimmedNonEmptyStringSchema } from "../string-schemas";
 
 const LocalWorkspacePolicyPayloadSchema = Schema.Struct({
   resourcePattern: OptionalTrimmedNonEmptyStringSchema,
-  effect: Schema.optional(PolicyEffectSchema),
-  approvalMode: Schema.optional(PolicyApprovalModeSchema),
+  effect: Schema.optional(LocalWorkspacePolicyEffectSchema),
+  approvalMode: Schema.optional(LocalWorkspacePolicyApprovalModeSchema),
   priority: Schema.optional(Schema.Number),
   enabled: Schema.optional(Schema.Boolean),
 });
@@ -39,7 +39,7 @@ const policyIdParam = HttpApiSchema.param("policyId", PolicyIdSchema);
 export class PoliciesApi extends HttpApiGroup.make("policies")
   .add(
     HttpApiEndpoint.get("list")`/workspaces/${workspaceIdParam}/policies`
-      .addSuccess(Schema.Array(PolicySchema))
+      .addSuccess(Schema.Array(LocalWorkspacePolicySchema))
       .addError(ControlPlaneBadRequestError)
       .addError(ControlPlaneUnauthorizedError)
       .addError(ControlPlaneForbiddenError)
@@ -49,7 +49,7 @@ export class PoliciesApi extends HttpApiGroup.make("policies")
   .add(
     HttpApiEndpoint.post("create")`/workspaces/${workspaceIdParam}/policies`
       .setPayload(CreatePolicyPayloadSchema)
-      .addSuccess(PolicySchema)
+      .addSuccess(LocalWorkspacePolicySchema)
       .addError(ControlPlaneBadRequestError)
       .addError(ControlPlaneUnauthorizedError)
       .addError(ControlPlaneForbiddenError)
@@ -58,7 +58,7 @@ export class PoliciesApi extends HttpApiGroup.make("policies")
   )
   .add(
     HttpApiEndpoint.get("get")`/workspaces/${workspaceIdParam}/policies/${policyIdParam}`
-      .addSuccess(PolicySchema)
+      .addSuccess(LocalWorkspacePolicySchema)
       .addError(ControlPlaneBadRequestError)
       .addError(ControlPlaneUnauthorizedError)
       .addError(ControlPlaneForbiddenError)
@@ -68,7 +68,7 @@ export class PoliciesApi extends HttpApiGroup.make("policies")
   .add(
     HttpApiEndpoint.patch("update")`/workspaces/${workspaceIdParam}/policies/${policyIdParam}`
       .setPayload(UpdatePolicyPayloadSchema)
-      .addSuccess(PolicySchema)
+      .addSuccess(LocalWorkspacePolicySchema)
       .addError(ControlPlaneBadRequestError)
       .addError(ControlPlaneUnauthorizedError)
       .addError(ControlPlaneForbiddenError)

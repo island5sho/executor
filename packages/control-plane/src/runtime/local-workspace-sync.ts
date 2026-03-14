@@ -9,7 +9,6 @@ import {
   writeLocalWorkspaceState,
   type LocalWorkspaceState,
 } from "./local-workspace-state";
-import { slugify } from "./slug";
 
 const trimOrNull = (value: string | null | undefined): string | null => {
   if (value == null) {
@@ -30,11 +29,10 @@ export const derivePolicyConfigKey = (
   const base =
     trimOrNull(policy.resourcePattern)
     ?? `${policy.effect}-${policy.approvalMode}`;
-  const slugBase = slugify(base) || "policy";
-  let candidate = slugBase;
+  let candidate = base;
   let counter = 2;
   while (used.has(candidate)) {
-    candidate = `${slugBase}-${counter}`;
+    candidate = `${base}-${counter}`;
     counter += 1;
   }
   used.add(candidate);
