@@ -390,7 +390,6 @@ const authorizePersistedToolInvocation = (input: {
   >[0]["onElicitation"];
 }): Effect.Effect<void, Error, never> =>
   Effect.gen(function* () {
-    const runtimeLocalWorkspace = yield* getRuntimeLocalWorkspaceOption();
     const localWorkspacePolicies = yield* loadRuntimeLocalWorkspacePolicies(input.workspaceId).pipe(
       Effect.mapError((cause) =>
         cause instanceof Error ? cause : new Error(String(cause)),
@@ -403,17 +402,6 @@ const authorizePersistedToolInvocation = (input: {
       policies: localWorkspacePolicies.policies,
       context: {
         workspaceId: input.workspaceId,
-        organizationId:
-          runtimeLocalWorkspace !== null
-          && runtimeLocalWorkspace.installation.workspaceId === input.workspaceId
-            ? runtimeLocalWorkspace.installation.organizationId
-            : ("org_unknown" as never),
-        accountId: input.accountId,
-        clientId:
-          typeof input.context?.clientId === "string" &&
-          input.context.clientId.length > 0
-            ? input.context.clientId
-            : null,
       },
     });
 

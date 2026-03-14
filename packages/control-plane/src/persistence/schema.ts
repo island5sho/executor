@@ -27,7 +27,6 @@ export const tableNames = {
   workspaceSourceOauthClients: "workspace_source_oauth_clients",
   secretMaterials: "secret_materials",
   sourceAuthSessions: "source_auth_sessions",
-  policies: "policies",
   localInstallations: "local_installations",
   executions: "executions",
   executionInteractions: "execution_interactions",
@@ -520,70 +519,6 @@ export const sourceAuthSessionsTable = pgTable(
   ],
 );
 
-export const policiesTable = pgTable(
-  tableNames.policies,
-  {
-    id: text("id").notNull().primaryKey(),
-    scopeType: text("scope_type").notNull(),
-    organizationId: text("organization_id").notNull(),
-    workspaceId: text("workspace_id"),
-    targetAccountId: text("target_account_id"),
-    clientId: text("client_id"),
-    resourceType: text("resource_type").notNull(),
-    resourcePattern: text("resource_pattern").notNull(),
-    matchType: text("match_type").notNull(),
-    effect: text("effect").notNull(),
-    approvalMode: text("approval_mode").notNull(),
-    argumentConditionsJson: text("argument_conditions_json"),
-    priority: bigint("priority", { mode: "number" }).notNull(),
-    enabled: boolean("enabled").notNull(),
-    createdAt: bigint("created_at", { mode: "number" }).notNull(),
-    updatedAt: bigint("updated_at", { mode: "number" }).notNull(),
-  },
-  (table) => [
-    index("policies_organization_priority_idx").on(
-      table.organizationId,
-      table.priority.desc(),
-      table.updatedAt,
-      table.id,
-    ),
-    index("policies_workspace_priority_idx").on(
-      table.workspaceId,
-      table.priority.desc(),
-      table.updatedAt,
-      table.id,
-    ),
-    check(
-      "policies_scope_type_check",
-      sql`${table.scopeType} in ('organization', 'workspace')`,
-    ),
-    check(
-      "policies_scope_consistency_check",
-      sql`(
-        ${table.scopeType} = 'organization' and ${table.workspaceId} is null
-      ) or (
-        ${table.scopeType} = 'workspace' and ${table.workspaceId} is not null
-      )`,
-    ),
-    check(
-      "policies_resource_type_check",
-      sql`${table.resourceType} in ('all_tools', 'source', 'namespace', 'tool_path')`,
-    ),
-    check(
-      "policies_match_type_check",
-      sql`${table.matchType} in ('glob', 'exact')`,
-    ),
-    check(
-      "policies_effect_check",
-      sql`${table.effect} in ('allow', 'deny')`,
-    ),
-    check(
-      "policies_approval_mode_check",
-      sql`${table.approvalMode} in ('auto', 'required')`,
-    ),
-  ],
-);
-
 export const localInstallationsTable = pgTable(
   tableNames.localInstallations,
   {
@@ -668,7 +603,6 @@ export const drizzleSchema = {
   workspaceSourceOauthClientsTable,
   secretMaterialsTable,
   sourceAuthSessionsTable,
-  policiesTable,
   localInstallationsTable,
   executionsTable,
   executionInteractionsTable,

@@ -93,8 +93,7 @@ describe("control-plane payload schemas", () => {
 
     throws(() =>
       Schema.decodeUnknownSync(CreatePolicyPayloadSchema)({
-        resourcePattern: "github.*",
-        resourceType: "tool_path",
+        resourcePattern: "   ",
       })
     );
   });

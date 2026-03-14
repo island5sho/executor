@@ -14,7 +14,6 @@ export { createAuthLeasesRepo } from "./auth-leases-repo";
 export { createSourceOauthClientsRepo } from "./source-oauth-clients-repo";
 export { createSecretMaterialsRepo } from "./secret-materials-repo";
 export { createSourceAuthSessionsRepo } from "./source-auth-sessions-repo";
-export { createPoliciesRepo } from "./policies-repo";
 export { createLocalInstallationsRepo } from "./local-installations-repo";
 export { createExecutionsRepo } from "./executions-repo";
 export { createExecutionInteractionsRepo } from "./execution-interactions-repo";
