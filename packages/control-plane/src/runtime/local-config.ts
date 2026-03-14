@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { promises as fs } from "node:fs";
+import {
+  type ParseError as JsoncParseError,
+  parse as parseJsoncDocument,
+  printParseErrorCode,
+} from "jsonc-parser";
 
 import {
   LocalExecutorConfigSchema,
@@ -49,74 +54,38 @@ const trimOrUndefined = (value: string | undefined | null): string | undefined =
   return trimmed && trimmed.length > 0 ? trimmed : undefined;
 };
 
-const stripJsonComments = (input: string): string => {
-  let output = "";
-  let inString = false;
-  let stringChar = '"';
-  let escapeNext = false;
-  let inLineComment = false;
-  let inBlockComment = false;
+const formatJsoncParseErrors = (content: string, errors: readonly JsoncParseError[]): string => {
+  const lines = content.split("\n");
 
-  for (let index = 0; index < input.length; index += 1) {
-    const char = input[index]!;
-    const next = input[index + 1];
+  return errors
+    .map((error) => {
+      const beforeOffset = content.slice(0, error.offset).split("\n");
+      const line = beforeOffset.length;
+      const column = beforeOffset[beforeOffset.length - 1]?.length ?? 0;
+      const lineText = lines[line - 1];
+      const location = `line ${line}, column ${column + 1}`;
+      const detail = printParseErrorCode(error.error);
 
-    if (inLineComment) {
-      if (char === "\n") {
-        inLineComment = false;
-        output += char;
+      if (!lineText) {
+        return `${detail} at ${location}`;
       }
-      continue;
-    }
 
-    if (inBlockComment) {
-      if (char === "*" && next === "/") {
-        inBlockComment = false;
-        index += 1;
-      }
-      continue;
-    }
-
-    if (inString) {
-      output += char;
-      if (escapeNext) {
-        escapeNext = false;
-      } else if (char === "\\") {
-        escapeNext = true;
-      } else if (char === stringChar) {
-        inString = false;
-      }
-      continue;
-    }
-
-    if ((char === '"' || char === "'") && !inString) {
-      inString = true;
-      stringChar = char;
-      output += char;
-      continue;
-    }
-
-    if (char === "/" && next === "/") {
-      inLineComment = true;
-      index += 1;
-      continue;
-    }
-
-    if (char === "/" && next === "*") {
-      inBlockComment = true;
-      index += 1;
-      continue;
-    }
-
-    output += char;
-  }
-
-  return output;
+      return `${detail} at ${location}\n${lineText}`;
+    })
+    .join("\n");
 };
 
 const parseJsonc = (input: { path: string; content: string }): LocalExecutorConfig => {
+  const errors: JsoncParseError[] = [];
+
   try {
-    const parsed = JSON.parse(stripJsonComments(input.content)) as unknown;
+    const parsed = parseJsoncDocument(input.content, errors, {
+      allowTrailingComma: true,
+    });
+    if (errors.length > 0) {
+      throw new Error(formatJsoncParseErrors(input.content, errors));
+    }
+
     return decodeLocalExecutorConfig(parsed);
   } catch (cause) {
     const message = cause instanceof Error ? cause.message : String(cause);
