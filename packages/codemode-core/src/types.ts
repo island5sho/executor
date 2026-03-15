@@ -1,5 +1,6 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import type * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 
 export type ToolPath = string & { readonly __toolPath: unique symbol };
 
@@ -142,6 +143,25 @@ export type ToolDescriptor = {
   providerDataJson?: string;
 };
 
+export const ToolDescriptorSchema = Schema.Struct({
+  path: Schema.String,
+  sourceKey: Schema.String,
+  description: Schema.optional(Schema.String),
+  interaction: Schema.optional(
+    Schema.Union(Schema.Literal("auto"), Schema.Literal("required")),
+  ),
+  elicitation: Schema.optional(Schema.Unknown),
+  inputType: Schema.optional(Schema.String),
+  outputType: Schema.optional(Schema.String),
+  inputSchemaJson: Schema.optional(Schema.String),
+  outputSchemaJson: Schema.optional(Schema.String),
+  schemaBundleId: Schema.optional(Schema.String),
+  exampleInputJson: Schema.optional(Schema.String),
+  exampleOutputJson: Schema.optional(Schema.String),
+  providerKind: Schema.optional(Schema.String),
+  providerDataJson: Schema.optional(Schema.String),
+});
+
 export type ToolSchemaBundle = {
   id: string;
   kind: string;
@@ -149,15 +169,35 @@ export type ToolSchemaBundle = {
   refsJson: string;
 };
 
+export const ToolSchemaBundleSchema = Schema.Struct({
+  id: Schema.String,
+  kind: Schema.String,
+  hash: Schema.String,
+  refsJson: Schema.String,
+});
+
 export type ToolNamespace = {
   namespace: string;
   displayName?: string;
   toolCount?: number;
 };
 
+export const ToolNamespaceSchema = Schema.Struct({
+  namespace: Schema.String,
+  displayName: Schema.optional(Schema.String),
+  toolCount: Schema.optional(Schema.Number),
+});
+
 export type SearchHit = {
   path: ToolPath;
   score: number;
+};
+
+export type ToolCatalogEntry = {
+  descriptor: ToolDescriptor;
+  namespace?: string;
+  searchText?: string;
+  score?: (queryTokens: readonly string[]) => number;
 };
 
 export interface ToolCatalog {

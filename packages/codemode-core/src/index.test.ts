@@ -9,6 +9,7 @@ import * as TestClock from "effect/TestClock";
 import {
   allowAllToolInteractions,
   createToolCatalogDiscovery,
+  createToolCatalogFromEntries,
   createToolCatalogFromTools,
   createStaticDiscoveryFromTools,
   createSystemToolMap,
@@ -352,6 +353,83 @@ describe("codemode-core", () => {
       expect(discovered.bestPath).toBe("source.issues.create");
       expect(discovered.results[0]?.path).toBe("source.issues.create");
       expect(discovered.results[0]?.interaction).toBe("required");
+    }),
+  );
+
+  it.effect("builds a tool catalog from descriptor entries", () =>
+    Effect.gen(function* () {
+      const catalog = createToolCatalogFromEntries({
+        entries: [
+          {
+            namespace: "github.repos",
+            searchText: "github repository details get repo",
+            descriptor: {
+              path: asToolPath("github.repos.getRepo"),
+              sourceKey: "source.github",
+              description: "Get repository details",
+              inputType: "{ owner: string; repo: string }",
+              outputType: "Repository",
+              inputSchemaJson: '{"type":"object"}',
+            },
+          },
+          {
+            namespace: "github.issues",
+            searchText: "github issues list repository issues",
+            score: (queryTokens) =>
+              queryTokens.includes("issues") && queryTokens.includes("repository")
+                ? 50
+                : 0,
+            descriptor: {
+              path: asToolPath("github.issues.list"),
+              sourceKey: "source.github",
+              description: "List repository issues",
+              inputType: "{ owner: string; repo: string }",
+              outputType: "Issue[]",
+            },
+          },
+        ],
+        getSchemaBundle: ({ id }) =>
+          Effect.succeed(
+            id === "bundle_1"
+              ? {
+                  id,
+                  kind: "json_schema_ref_map",
+                  hash: "hash_1",
+                  refsJson: "{}",
+                }
+              : null,
+          ),
+      });
+
+      const namespaces = yield* catalog.listNamespaces({ limit: 10 });
+      expect(namespaces).toEqual([
+        { namespace: "github.repos", toolCount: 1 },
+        { namespace: "github.issues", toolCount: 1 },
+      ]);
+
+      const listed = yield* catalog.listTools({
+        namespace: "github.repos",
+        query: "repository details",
+        limit: 10,
+        includeSchemas: false,
+      });
+      expect(listed[0]?.path).toBe("github.repos.getRepo");
+      expect(listed[0]?.inputSchemaJson).toBeUndefined();
+
+      const discovered = yield* catalog.searchTools({
+        query: "repository issues",
+        limit: 10,
+      });
+      expect(discovered[0]?.path).toBe("github.issues.list");
+
+      const described = yield* catalog.getToolByPath({
+        path: asToolPath("github.repos.getRepo"),
+        includeSchemas: true,
+      });
+      expect(described?.inputSchemaJson).toContain('"type"');
+
+      const bundle = yield* catalog.getSchemaBundle({ id: "bundle_1" });
+      expect(bundle?.id).toBe("bundle_1");
     }),
   );
 

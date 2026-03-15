@@ -7,7 +7,6 @@ import { dirname, join, resolve } from "node:path";
 import { readDistributionPackageMetadata, repoRoot } from "./metadata";
 
 const defaultOutputDir = resolve(repoRoot, "apps/executor/dist/npm");
-const DENO_INSTALL_URL = "https://docs.deno.com/runtime/getting_started/installation/";
 
 
 export type BuildDistributionPackageOptions = {
@@ -72,26 +71,16 @@ const runCommand = async (input: CommandInput): Promise<void> => {
   );
 };
 
-const resolvePGliteDistDir = (): string => {
-  const requireFromControlPlane = createRequire(
-    join(repoRoot, "packages/control-plane/package.json"),
-  );
-  const entryPath = requireFromControlPlane.resolve("@electric-sql/pglite");
-  const distDir = dirname(entryPath);
-
-  if (!existsSync(distDir)) {
-    throw new Error(`Unable to locate PGlite dist directory at ${distDir}`);
-  }
-
-  return distDir;
-};
-
 const resolveQuickJsWasmPath = (): string => {
   const requireFromQuickJsRuntime = createRequire(
     join(repoRoot, "packages/runtime-quickjs/package.json"),
   );
-  const wasmPath = requireFromQuickJsRuntime.resolve(
-    "@jitl/quickjs-wasmfile-release-sync/wasm",
+  const quickJsPackagePath = requireFromQuickJsRuntime.resolve(
+    "quickjs-emscripten/package.json",
+  );
+  const wasmPath = resolve(
+    dirname(quickJsPackagePath),
+    "../@jitl/quickjs-wasmfile-release-sync/dist/emscripten-module.wasm",
   );
 
   if (!existsSync(wasmPath)) {
@@ -131,9 +120,6 @@ const createPackageJson = (input: {
     bin: {
       executor: "bin/executor.js",
     },
-    scripts: {
-      postinstall: "node ./bin/postinstall.js",
-    },
     files: [
       "bin",
       "resources",
@@ -154,48 +140,6 @@ const createLauncherSource = () => [
   "",
 ].join("\n");
 
-const createPostinstallSource = () => [
-  "#!/usr/bin/env node",
-  'import { spawnSync } from "node:child_process";',
-  'import { existsSync } from "node:fs";',
-  'import { join } from "node:path";',
-  "",
-  `const denoInstallUrl = ${JSON.stringify(DENO_INSTALL_URL)};`,
-  "",
-  "const resolveDenoExecutable = () => {",
-  '  const configured = process.env.DENO_BIN?.trim();',
-  '  if (configured) {',
-  '    return configured;',
-  '  }',
-  "",
-  '  const home = process.env.HOME?.trim();',
-  '  if (home) {',
-  '    const installedPath = join(home, ".deno", "bin", "deno");',
-  '    if (existsSync(installedPath)) {',
-  '      return installedPath;',
-  '    }',
-  '  }',
-  "",
-  '  return "deno";',
-  "};",
-  "",
-  "const isDenoAvailable = (executable) => {",
-  '  const result = spawnSync(executable, ["--version"], {',
-  '    stdio: "ignore",',
-  '    timeout: 5000,',
-  '  });',
-  "",
-  '  return result.error === undefined && result.status === 0;',
-  "};",
-  "",
-  "const denoExecutable = resolveDenoExecutable();",
-  "",
-  "if (!isDenoAvailable(denoExecutable)) {",
-  '  console.warn(`Deno not found, if you want to use deno for sandboxing install it from ${denoInstallUrl} otherwise JS will execute in QuickJS`);',
-  "}",
-  "",
-].join("\n");
-
 export const buildDistributionPackage = async (
   options: BuildDistributionPackageOptions = {},
 ): Promise<DistributionPackageArtifact> => {
@@ -204,13 +148,8 @@ export const buildDistributionPackage = async (
   const binDir = join(packageDir, "bin");
   const resourcesDir = join(packageDir, "resources");
   const webDir = join(resourcesDir, "web");
-  const migrationsDir = join(resourcesDir, "migrations");
   const bundlePath = join(binDir, "executor.mjs");
   const launcherPath = join(binDir, "executor.js");
-  const postinstallPath = join(binDir, "postinstall.js");
-  const pgliteDistDir = resolvePGliteDistDir();
-  const pgliteDataPath = join(pgliteDistDir, "pglite.data");
-  const pgliteWasmPath = join(pgliteDistDir, "pglite.wasm");
   const quickJsWasmPath = resolveQuickJsWasmPath();
   const webDistDir = join(repoRoot, "apps/web/dist");
   const readmePath = join(repoRoot, "README.md");
@@ -246,11 +185,6 @@ export const buildDistributionPackage = async (
   });
 
   await cp(webDistDir, webDir, { recursive: true });
-  await cp(join(repoRoot, "packages/control-plane/drizzle"), migrationsDir, {
-    recursive: true,
-  });
-  await cp(pgliteDataPath, join(binDir, "pglite.data"));
-  await cp(pgliteWasmPath, join(binDir, "pglite.wasm"));
   await cp(quickJsWasmPath, join(binDir, "emscripten-module.wasm"));
   await mkdir(join(binDir, "openapi-extractor-wasm"), { recursive: true });
   await cp(
@@ -273,9 +207,7 @@ export const buildDistributionPackage = async (
   }));
   await cp(readmePath, join(packageDir, "README.md"));
   await writeFile(launcherPath, createLauncherSource());
-  await writeFile(postinstallPath, createPostinstallSource());
   await chmod(launcherPath, 0o755);
-  await chmod(postinstallPath, 0o755);
 
   return {
     packageDir,
