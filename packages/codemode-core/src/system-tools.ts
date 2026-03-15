@@ -3,11 +3,13 @@ import * as Schema from "effect/Schema";
 
 import { createDiscoveryPrimitivesFromToolCatalog } from "./discovery";
 import { toTool } from "./tool-map";
-import type {
-  DiscoveryPrimitives,
-  ToolCatalog,
-  ToolMap,
-  ToolPath,
+import {
+  ToolDescriptorSchema,
+  ToolNamespaceSchema,
+  ToolSchemaBundleSchema,
+  type ToolCatalog,
+  type ToolMap,
+  type ToolPath,
 } from "./types";
 
 const asToolPath = (value: string): ToolPath => value as ToolPath;
@@ -20,13 +22,7 @@ const catalogNamespacesInputSchema = Schema.standardSchemaV1(
 
 const catalogNamespacesOutputSchema = Schema.standardSchemaV1(
   Schema.Struct({
-    namespaces: Schema.Array(
-      Schema.Struct({
-        namespace: Schema.String,
-        displayName: Schema.optional(Schema.String),
-        toolCount: Schema.optional(Schema.Number),
-      }),
-    ),
+    namespaces: Schema.Array(ToolNamespaceSchema),
   }),
 );
 
@@ -41,23 +37,7 @@ const catalogToolsInputSchema = Schema.standardSchemaV1(
 
 const catalogToolsOutputSchema = Schema.standardSchemaV1(
   Schema.Struct({
-    results: Schema.Array(
-      Schema.Struct({
-        path: Schema.String,
-        sourceKey: Schema.String,
-        description: Schema.optional(Schema.String),
-        interaction: Schema.optional(Schema.String),
-        inputType: Schema.optional(Schema.String),
-        outputType: Schema.optional(Schema.String),
-        inputSchemaJson: Schema.optional(Schema.String),
-        outputSchemaJson: Schema.optional(Schema.String),
-        schemaBundleId: Schema.optional(Schema.String),
-        exampleInputJson: Schema.optional(Schema.String),
-        exampleOutputJson: Schema.optional(Schema.String),
-        providerKind: Schema.optional(Schema.String),
-        providerDataJson: Schema.optional(Schema.String),
-      }),
-    ),
+    results: Schema.Array(ToolDescriptorSchema),
   }),
 );
 
@@ -69,7 +49,7 @@ const describeToolInputSchema = Schema.standardSchemaV1(
 );
 
 const describeToolOutputSchema = Schema.standardSchemaV1(
-  Schema.NullOr(Schema.Unknown),
+  Schema.NullOr(ToolDescriptorSchema),
 );
 
 const describeSchemaBundleInputSchema = Schema.standardSchemaV1(
@@ -79,14 +59,7 @@ const describeSchemaBundleInputSchema = Schema.standardSchemaV1(
 );
 
 const describeSchemaBundleOutputSchema = Schema.standardSchemaV1(
-  Schema.NullOr(
-    Schema.Struct({
-      id: Schema.String,
-      kind: Schema.String,
-      hash: Schema.String,
-      refsJson: Schema.String,
-    }),
-  ),
+  Schema.NullOr(ToolSchemaBundleSchema),
 );
 
 const discoverInputSchema = Schema.standardSchemaV1(
@@ -97,17 +70,12 @@ const discoverInputSchema = Schema.standardSchemaV1(
   }),
 );
 
-const discoverResultItemSchema = Schema.Struct({
-  path: Schema.String,
-  score: Schema.Number,
-  description: Schema.optional(Schema.String),
-  interaction: Schema.optional(Schema.String),
-  inputType: Schema.optional(Schema.String),
-  outputType: Schema.optional(Schema.String),
-  inputSchemaJson: Schema.optional(Schema.String),
-  outputSchemaJson: Schema.optional(Schema.String),
-  schemaBundleId: Schema.optional(Schema.String),
-});
+const discoverResultItemSchema = Schema.extend(
+  ToolDescriptorSchema,
+  Schema.Struct({
+    score: Schema.Number,
+  }),
+);
 
 const discoverOutputSchema = Schema.standardSchemaV1(
   Schema.Struct({
@@ -118,7 +86,8 @@ const discoverOutputSchema = Schema.standardSchemaV1(
 );
 
 export type CreateSystemToolMapInput = {
-  catalog: ToolCatalog;
+  catalog?: ToolCatalog;
+  getCatalog?: () => ToolCatalog;
   sourceKey?: string;
 };
 
@@ -126,130 +95,137 @@ export const createSystemToolMap = (
   input: CreateSystemToolMapInput,
 ): ToolMap => {
   const sourceKey = input.sourceKey ?? "system";
-  const primitives: DiscoveryPrimitives = createDiscoveryPrimitivesFromToolCatalog({
-    catalog: input.catalog,
-  });
+  const getCatalog = (): ToolCatalog => {
+    if (input.catalog) {
+      return input.catalog;
+    }
+    if (input.getCatalog) {
+      return input.getCatalog();
+    }
+
+    throw new Error("createSystemToolMap requires a catalog or getCatalog");
+  };
+  const getPrimitives = () =>
+    createDiscoveryPrimitivesFromToolCatalog({
+      catalog: getCatalog(),
+    }) as Required<ReturnType<typeof createDiscoveryPrimitivesFromToolCatalog>>;
 
   const tools: ToolMap = {};
 
-  if (primitives.catalog) {
-    tools["catalog.namespaces"] = toTool({
-      tool: {
-        description: "List available namespaces with display names and tool counts",
-        inputSchema: catalogNamespacesInputSchema,
-        outputSchema: catalogNamespacesOutputSchema,
-        execute: ({ limit }: { limit?: number }) =>
-          Effect.runPromise(
-            primitives.catalog!.namespaces({
-              ...(limit !== undefined ? { limit } : {}),
-            }),
-          ),
-      },
-      metadata: {
-        sourceKey,
-        interaction: "auto",
-      },
-    });
+  tools["catalog.namespaces"] = toTool({
+    tool: {
+      description: "List available namespaces with display names and tool counts",
+      inputSchema: catalogNamespacesInputSchema,
+      outputSchema: catalogNamespacesOutputSchema,
+      execute: ({ limit }: { limit?: number }) =>
+        Effect.runPromise(
+          getPrimitives().catalog.namespaces({
+            ...(limit !== undefined ? { limit } : {}),
+          }),
+        ),
+    },
+    metadata: {
+      sourceKey,
+      interaction: "auto",
+    },
+  });
 
-    tools["catalog.tools"] = toTool({
-      tool: {
-        description: "List tools with optional namespace and query filters",
-        inputSchema: catalogToolsInputSchema,
-        outputSchema: catalogToolsOutputSchema,
-        execute: (
-          input: {
-            namespace?: string;
-            query?: string;
-            limit?: number;
-            includeSchemas?: boolean;
-          },
-        ) =>
-          Effect.runPromise(
-            primitives.catalog!.tools({
-              ...(input.namespace !== undefined ? { namespace: input.namespace } : {}),
-              ...(input.query !== undefined ? { query: input.query } : {}),
-              ...(input.limit !== undefined ? { limit: input.limit } : {}),
-              ...(input.includeSchemas !== undefined
-                ? { includeSchemas: input.includeSchemas }
-                : {}),
-            }),
-          ),
-      },
-      metadata: {
-        sourceKey,
-        interaction: "auto",
-      },
-    });
-  }
+  tools["catalog.tools"] = toTool({
+    tool: {
+      description: "List tools with optional namespace and query filters",
+      inputSchema: catalogToolsInputSchema,
+      outputSchema: catalogToolsOutputSchema,
+      execute: (
+        toolInput: {
+          namespace?: string;
+          query?: string;
+          limit?: number;
+          includeSchemas?: boolean;
+        },
+      ) =>
+        Effect.runPromise(
+          getPrimitives().catalog.tools({
+            ...(toolInput.namespace !== undefined
+              ? { namespace: toolInput.namespace }
+              : {}),
+            ...(toolInput.query !== undefined ? { query: toolInput.query } : {}),
+            ...(toolInput.limit !== undefined ? { limit: toolInput.limit } : {}),
+            ...(toolInput.includeSchemas !== undefined
+              ? { includeSchemas: toolInput.includeSchemas }
+              : {}),
+          }),
+        ),
+    },
+    metadata: {
+      sourceKey,
+      interaction: "auto",
+    },
+  });
 
-  if (primitives.describe) {
-    tools["describe.tool"] = toTool({
-      tool: {
-        description: "Get metadata and optional schemas for a tool path",
-        inputSchema: describeToolInputSchema,
-        outputSchema: describeToolOutputSchema,
-        execute: ({ path, includeSchemas }: { path: string; includeSchemas?: boolean }) =>
-          Effect.runPromise(
-            primitives.describe!.tool({
-              path: asToolPath(path),
-              ...(includeSchemas !== undefined ? { includeSchemas } : {}),
-            }),
-          ),
-      },
-      metadata: {
-        sourceKey,
-        interaction: "auto",
-      },
-    });
+  tools["describe.tool"] = toTool({
+    tool: {
+      description: "Get metadata and optional schemas for a tool path",
+      inputSchema: describeToolInputSchema,
+      outputSchema: describeToolOutputSchema,
+      execute: ({ path, includeSchemas }: { path: string; includeSchemas?: boolean }) =>
+        Effect.runPromise(
+          getPrimitives().describe.tool({
+            path: asToolPath(path),
+            ...(includeSchemas !== undefined ? { includeSchemas } : {}),
+          }),
+        ),
+    },
+    metadata: {
+      sourceKey,
+      interaction: "auto",
+    },
+  });
 
-    tools["describe.schemaBundle"] = toTool({
-      tool: {
-        description: "Get a shared schema bundle by id",
-        inputSchema: describeSchemaBundleInputSchema,
-        outputSchema: describeSchemaBundleOutputSchema,
-        execute: ({ id }: { id: string }) =>
-          Effect.runPromise(
-            primitives.describe!.schemaBundle({
-              id,
-            }),
-          ),
-      },
-      metadata: {
-        sourceKey,
-        interaction: "auto",
-      },
-    });
-  }
+  tools["describe.schemaBundle"] = toTool({
+    tool: {
+      description: "Get a shared schema bundle by id",
+      inputSchema: describeSchemaBundleInputSchema,
+      outputSchema: describeSchemaBundleOutputSchema,
+      execute: ({ id }: { id: string }) =>
+        Effect.runPromise(
+          getPrimitives().describe.schemaBundle({
+            id,
+          }),
+        ),
+    },
+    metadata: {
+      sourceKey,
+      interaction: "auto",
+    },
+  });
 
-  if (primitives.discover) {
-    tools.discover = toTool({
-      tool: {
-        description: "Search tools by intent and return ranked matches",
-        inputSchema: discoverInputSchema,
-        outputSchema: discoverOutputSchema,
-        execute: (
-          input: {
-            query: string;
-            limit?: number;
-            includeSchemas?: boolean;
-          },
-        ) =>
-          Effect.runPromise(
-            primitives.discover!({
-              query: input.query,
-              ...(input.limit !== undefined ? { limit: input.limit } : {}),
-              ...(input.includeSchemas !== undefined
-                ? { includeSchemas: input.includeSchemas }
-                : {}),
-            }),
-          ),
-      },
-      metadata: {
-        sourceKey,
-        interaction: "auto",
-      },
-    });
-  }
+  tools.discover = toTool({
+    tool: {
+      description: "Search tools by intent and return ranked matches",
+      inputSchema: discoverInputSchema,
+      outputSchema: discoverOutputSchema,
+      execute: (
+        toolInput: {
+          query: string;
+          limit?: number;
+          includeSchemas?: boolean;
+        },
+      ) =>
+        Effect.runPromise(
+          getPrimitives().discover({
+            query: toolInput.query,
+            ...(toolInput.limit !== undefined ? { limit: toolInput.limit } : {}),
+            ...(toolInput.includeSchemas !== undefined
+              ? { includeSchemas: toolInput.includeSchemas }
+              : {}),
+          }),
+        ),
+    },
+    metadata: {
+      sourceKey,
+      interaction: "auto",
+    },
+  });
 
   return tools;
 };

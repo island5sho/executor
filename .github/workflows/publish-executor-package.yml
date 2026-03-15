@@ -1,8 +1,10 @@
-name: Publish Executor Package
+name: Publish Executor
 run-name: "${{ format('publish executor {0}', github.ref_name) }}"
 
 on:
-  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
 
 permissions:
   contents: write
@@ -22,14 +24,6 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Require default branch
-        if: github.ref_name != github.event.repository.default_branch
-        run: |
-          echo "Publish from ${GITHUB_REF_NAME} is blocked; use ${DEFAULT_BRANCH}." >&2
-          exit 1
-        env:
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
 
@@ -39,111 +33,15 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - name: Setup Deno
-        uses: denoland/setup-deno@v2
-        with:
-          deno-version: v2.x
-
       - name: Install dependencies
         run: bun install --frozen-lockfile
-
-      - name: Resolve package version
-        id: version
-        shell: bash
-        run: |
-          set -euo pipefail
-          version="$(node -p "require('./apps/executor/package.json').version")"
-
-          if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "apps/executor/package.json version is not semver: ${version}" >&2
-            exit 1
-          fi
-
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
-          echo "Publishing executor@${version}"
-
-      - name: Inspect existing publish state
-        id: state
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          version="${{ steps.version.outputs.version }}"
-          tag="${{ steps.version.outputs.tag }}"
-          package_published=false
-          release_exists=false
-          tag_exists=false
-
-          if npm view "executor@${version}" version >/dev/null 2>&1; then
-            package_published=true
-          fi
-
-          if gh release view "${tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
-            release_exists=true
-          fi
-
-          if git rev-parse -q --verify "refs/tags/${tag}" >/dev/null || git ls-remote --exit-code --tags origin "refs/tags/${tag}" >/dev/null 2>&1; then
-            tag_exists=true
-          fi
-
-          echo "package_published=${package_published}" >> "$GITHUB_OUTPUT"
-          echo "release_exists=${release_exists}" >> "$GITHUB_OUTPUT"
-          echo "tag_exists=${tag_exists}" >> "$GITHUB_OUTPUT"
-
-          if [[ "${package_published}" == true && "${release_exists}" == true ]]; then
-            echo "executor@${version} is already published and ${tag} already exists" >&2
-            exit 1
-          fi
-
-          if [[ "${package_published}" == false && "${release_exists}" == true ]]; then
-            echo "GitHub release ${tag} exists, but executor@${version} is not published to npm" >&2
-            exit 1
-          fi
-
-          if [[ "${package_published}" == false && "${tag_exists}" == true && "${release_exists}" == false ]]; then
-            echo "Release tag ${tag} already exists without a GitHub release; resolve that before publishing executor@${version}" >&2
-            exit 1
-          fi
 
       - name: Run executor checks
         run: |
           bun run --cwd apps/executor typecheck
           bun run --cwd apps/executor test
 
-      - name: Build release artifacts
-        run: bun run --cwd apps/executor build:release
-
-      - name: Publish to npm
-        if: steps.state.outputs.package_published != 'true'
-        working-directory: apps/executor
-        run: npm publish ./dist/npm --access public --provenance
-
-      - name: Create GitHub release
-        if: steps.state.outputs.release_exists != 'true'
-        shell: bash
+      - name: Publish package and create release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          shopt -s nullglob
-          assets=(
-            apps/executor/dist/release/*.tgz
-            apps/executor/dist/release/checksums.txt
-            apps/executor/dist/release/portable/*.tar.gz
-            apps/executor/dist/release/portable/*.zip
-          )
-
-          if [[ ${#assets[@]} -lt 3 ]]; then
-            echo "Missing release assets under apps/executor/dist/release" >&2
-            exit 1
-          fi
-
-          gh release create "${{ steps.version.outputs.tag }}" \
-            "${assets[@]}" \
-            --repo "${GITHUB_REPOSITORY}" \
-            --target "${GITHUB_SHA}" \
-            --title "${{ steps.version.outputs.tag }}" \
-            --generate-notes \
-            --latest
+        run: bun run --cwd apps/executor release:publish

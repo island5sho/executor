@@ -29,12 +29,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "start": "bun src/cli/main.ts",
-    "build:dist": "bun src/distribution/build-package.ts",
-    "pack:dist": "bun src/distribution/build-package.ts && npm pack ./dist/npm",
-    "publish:dist:dry-run": "bun src/distribution/build-package.ts && npm publish ./dist/npm --dry-run",
-    "publish:dist": "bun src/distribution/build-package.ts && npm publish ./dist/npm",
-    "build:portable": "bun src/distribution/build-portable.ts",
-    "build:release": "bun src/distribution/build-release.ts"
+    "release:publish:dry-run": "bun src/distribution/publish.ts --dry-run",
+    "release:publish": "bun src/distribution/publish.ts"
   },
   "dependencies": {
     "@effect/cli": "catalog:",
