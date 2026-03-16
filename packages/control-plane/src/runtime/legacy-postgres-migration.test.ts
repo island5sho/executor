@@ -1,6 +1,6 @@
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 
 import { PGlite } from "@electric-sql/pglite";
 import { NodeFileSystem } from "@effect/platform-node";
@@ -38,6 +38,16 @@ const UPDATED_AT = 1_700_000_000_500;
 
 const makeTempDir = (prefix: string) =>
   mkdtempSync(join(tmpdir(), prefix));
+
+const findLegacyBackupPath = (legacyLocalDataDir: string): string | null => {
+  const parentDirectory = dirname(legacyLocalDataDir);
+  const backupPrefix = `${basename(legacyLocalDataDir)}.migrated-backup-`;
+  const backupEntry = readdirSync(parentDirectory).find((entry) =>
+    entry.startsWith(backupPrefix),
+  );
+
+  return backupEntry ? join(parentDirectory, backupEntry) : null;
+};
 
 const createLegacySchema = async (db: PGlite) => {
   await db.exec(`
@@ -470,11 +480,20 @@ const seedInitialLegacyWorkspace = async (legacyLocalDataDir: string) => {
   }
 };
 
-const appendUnmigratedLegacySource = async (legacyLocalDataDir: string) => {
+const seedFreshLegacyWorkspaceWithSecondSource = async (legacyLocalDataDir: string) => {
   const db = new PGlite(legacyLocalDataDir);
   await db.waitReady;
 
   try {
+    await createLegacySchema(db);
+    await db.query(
+      "insert into local_installations (id, account_id, workspace_id) values ($1, $2, $3)",
+      [LEGACY_INSTALLATION_ID, LEGACY_ACCOUNT_ID, LEGACY_WORKSPACE_ID],
+    );
+    await db.query(
+      "insert into workspaces (id, name) values ($1, $2)",
+      [LEGACY_WORKSPACE_ID, "Replacement Legacy Workspace"],
+    );
     await db.query(
       `insert into sources (
         workspace_id,
@@ -538,6 +557,7 @@ describe("legacy-postgres-migration", () => {
         homeStateDirectory,
         localDataDir: legacyLocalDataDir,
       });
+      const legacyBackupPath = findLegacyBackupPath(legacyLocalDataDir);
 
       const context = yield* resolveLocalWorkspaceContext({
         workspaceRoot,
@@ -555,6 +575,9 @@ describe("legacy-postgres-migration", () => {
       expect(existsSync(context.projectConfigPath)).toBe(true);
       expect(existsSync(localWorkspaceStatePath(context))).toBe(true);
       expect(existsSync(localControlPlaneStatePath(context))).toBe(true);
+      expect(existsSync(legacyLocalDataDir)).toBe(false);
+      expect(legacyBackupPath).not.toBeNull();
+      expect(legacyBackupPath !== null ? existsSync(legacyBackupPath) : false).toBe(true);
 
       expect(loadedConfig.projectConfig?.sources?.[LEGACY_SOURCE_ID]?.kind).toBe("mcp");
       expect(
@@ -616,7 +639,9 @@ describe("legacy-postgres-migration", () => {
 
       yield* Effect.promise(() => firstRuntime.close());
 
-      yield* Effect.promise(() => appendUnmigratedLegacySource(legacyLocalDataDir));
+      yield* Effect.promise(() =>
+        seedFreshLegacyWorkspaceWithSecondSource(legacyLocalDataDir),
+      );
 
       const secondRuntime = yield* createControlPlaneRuntime({
         workspaceRoot,

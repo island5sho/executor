@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import { mkdir, unlink } from "node:fs/promises";
+import { mkdir, rename, unlink } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import { FileSystem } from "@effect/platform";
@@ -241,6 +241,21 @@ type LegacyWorkspaceSnapshot = {
   executionInteractions: LegacyExecutionInteractionRow[];
   sourceAuthSessions: LegacySourceAuthSessionRow[];
   toolArtifacts: LegacyToolArtifactRow[];
+};
+
+type LegacySnapshotSource =
+  | {
+      kind: "pglite";
+      localDataDir: string;
+    }
+  | {
+      kind: "postgres";
+      databaseUrl: string;
+    };
+
+type LoadedLegacyWorkspaceSnapshot = {
+  snapshot: LegacyWorkspaceSnapshot;
+  source: LegacySnapshotSource;
 };
 
 type LegacyQueryClient = {
@@ -726,31 +741,71 @@ const loadLegacyWorkspaceSnapshot = async (
   };
 };
 
+const backupLegacyPGliteDataDir = async (
+  localDataDir: string,
+): Promise<string | null> => {
+  if (localDataDir.trim() === ":memory:") {
+    return null;
+  }
+
+  const resolvedDataDir = resolve(localDataDir);
+  if (!existsSync(resolvedDataDir)) {
+    return null;
+  }
+
+  const backupPath = `${resolvedDataDir}.migrated-backup-${Date.now()}`;
+  await rename(resolvedDataDir, backupPath);
+  return backupPath;
+};
+
 const tryLoadLegacyWorkspaceSnapshot = async (input: {
   localDataDir?: string;
   databaseUrl?: string;
-}): Promise<LegacyWorkspaceSnapshot | null> => {
-  const clients: LegacyQueryClient[] = [];
+}): Promise<LoadedLegacyWorkspaceSnapshot | null> => {
+  const clients: Array<{
+    client: LegacyQueryClient;
+    source: LegacySnapshotSource;
+  }> = [];
 
   try {
     if (trimOrNull(input.localDataDir) !== null) {
       const localClient = await openLegacyPGliteClient(input.localDataDir!);
       if (localClient !== null) {
-        clients.push(localClient);
+        clients.push({
+          client: localClient,
+          source: {
+            kind: "pglite",
+            localDataDir: input.localDataDir!,
+          },
+        });
       }
     }
 
     if (clients.length === 0 && isPostgresUrl(input.databaseUrl)) {
-      clients.push(openLegacyPostgresClient(input.databaseUrl!));
+      clients.push({
+        client: openLegacyPostgresClient(input.databaseUrl!),
+        source: {
+          kind: "postgres",
+          databaseUrl: input.databaseUrl!,
+        },
+      });
     }
 
-    for (const client of clients) {
+    for (const { client, source } of clients) {
       try {
         if (!(await hasLegacySchema(client))) {
           continue;
         }
 
-        return await loadLegacyWorkspaceSnapshot(client);
+        const snapshot = await loadLegacyWorkspaceSnapshot(client);
+        if (snapshot === null) {
+          continue;
+        }
+
+        return {
+          snapshot,
+          source,
+        };
       } catch {
         continue;
       }
@@ -759,7 +814,7 @@ const tryLoadLegacyWorkspaceSnapshot = async (input: {
     return null;
   } finally {
     await Promise.all(
-      clients.map((client) =>
+      clients.map(({ client }) =>
         client.close().catch(() => undefined)),
     );
   }
@@ -1526,7 +1581,7 @@ export const migrateLegacyPostgresWorkspaceIfNeeded = (input: {
       return;
     }
 
-    const snapshot = yield* Effect.tryPromise({
+    const loadedSnapshot = yield* Effect.tryPromise({
       try: () =>
         tryLoadLegacyWorkspaceSnapshot({
           localDataDir: input.legacyLocalDataDir,
@@ -1534,7 +1589,7 @@ export const migrateLegacyPostgresWorkspaceIfNeeded = (input: {
         }),
       catch: toError,
     });
-    if (snapshot === null) {
+    if (loadedSnapshot === null) {
       return;
     }
 
@@ -1542,7 +1597,7 @@ export const migrateLegacyPostgresWorkspaceIfNeeded = (input: {
       try: () =>
         migrateLegacyWorkspace({
           context: input.context,
-          snapshot,
+          snapshot: loadedSnapshot.snapshot,
         }),
       catch: toError,
     });
@@ -1569,6 +1624,31 @@ export const migrateLegacyPostgresWorkspaceIfNeeded = (input: {
         }),
       { discard: true },
     );
+
+    if (loadedSnapshot.source.kind === "pglite") {
+      const legacyLocalDataDir = loadedSnapshot.source.localDataDir;
+      const backupExit = yield* Effect.exit(
+        Effect.tryPromise({
+          try: () => backupLegacyPGliteDataDir(legacyLocalDataDir),
+          catch: toError,
+        }),
+      );
+
+      yield* Effect.sync(() => {
+        if (backupExit._tag === "Success" && backupExit.value !== null) {
+          console.warn(
+            `[executor] Backed up legacy local data dir to: ${backupExit.value}`,
+          );
+          return;
+        }
+
+        if (backupExit._tag === "Failure") {
+          console.warn(
+            `[executor] Migrated workspace files but failed to back up legacy local data dir: ${String(backupExit.cause)}`,
+          );
+        }
+      });
+    }
 
     yield* Effect.sync(() => {
       console.warn(
