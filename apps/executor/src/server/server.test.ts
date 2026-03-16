@@ -22,7 +22,7 @@ import {
   controlPlaneOpenApiSpec,
   type ControlPlaneClient,
   buildLocalSourceArtifact,
-  catalogSyncResultFromMcpManifestEntries,
+  catalogSyncResultFromMcpManifest,
   deriveLocalInstallation,
   type ResolveExecutionEnvironment,
   resolveLocalWorkspaceContext,
@@ -142,24 +142,28 @@ const writeConfiguredLocalMcpSource = (input: {
       updatedAt: Date.now(),
     };
 
-    const syncResult = catalogSyncResultFromMcpManifestEntries({
+    const syncResult = catalogSyncResultFromMcpManifest({
       source,
       endpoint: input.endpoint,
-      manifestEntries: [{
-        toolId: "gated_echo",
-        toolName: "gated_echo",
-        description: "Asks for approval before echoing a value",
-        inputSchema: {
-          type: "object",
-          properties: {
-            value: {
-              type: "string",
+      manifest: {
+        version: 2,
+        server: null,
+        tools: [{
+          toolId: "gated_echo",
+          toolName: "gated_echo",
+          description: "Asks for approval before echoing a value",
+          inputSchema: {
+            type: "object",
+            properties: {
+              value: {
+                type: "string",
+              },
             },
+            required: ["value"],
+            additionalProperties: false,
           },
-          required: ["value"],
-          additionalProperties: false,
-        },
-      }],
+        }],
+      },
     });
 
     yield* writeLocalSourceArtifact({
