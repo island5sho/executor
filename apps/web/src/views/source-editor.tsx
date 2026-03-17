@@ -34,6 +34,16 @@ import {
   IconTrash,
 } from "../components/icons";
 import { cn } from "../lib/utils";
+import {
+  asMcpRemoteTransportValue,
+  defaultMcpRemoteTransportFields,
+  defaultMcpStdioTransportFields,
+  setMcpTransportFieldsTransport,
+  type McpRemoteTransportFields,
+  type McpStdioTransportFields,
+  type McpTransportFields,
+  type McpTransportValue,
+} from "./mcp-transport-state";
 import { sourceTemplates, type SourceTemplate } from "./source-templates";
 import { getDomain } from "tldts";
 
@@ -63,21 +73,12 @@ const isSourceNotFoundLoadable = (loadable: Loadable<unknown>): boolean =>
   loadable.status === "error" &&
   loadable.error.message.toLowerCase().includes("source not found");
 
-type TransportValue = "" | "auto" | "streamable-http" | "sse" | "stdio";
-
-type SourceFormState = {
+type SourceFormBase = {
   name: string;
   kind: Source["kind"];
   endpoint: string;
   namespace: string;
   enabled: boolean;
-  transport: TransportValue;
-  queryParamsText: string;
-  headersText: string;
-  command: string;
-  argsText: string;
-  envText: string;
-  cwd: string;
   specUrl: string;
   service: string;
   version: string;
@@ -97,6 +98,8 @@ type SourceFormState = {
   > | null;
 };
 
+type SourceFormState = SourceFormBase & McpTransportFields;
+
 const kindOptions: ReadonlyArray<Source["kind"]> = [
   "mcp",
   "openapi",
@@ -105,7 +108,7 @@ const kindOptions: ReadonlyArray<Source["kind"]> = [
   "internal",
 ];
 
-const transportOptions: ReadonlyArray<Exclude<TransportValue, "">> = [
+const transportOptions: ReadonlyArray<Exclude<McpTransportValue, "">> = [
   "auto",
   "streamable-http",
   "sse",
@@ -343,7 +346,7 @@ const readBindingStringArray = (
 const readBindingString = (source: Source, key: string): string =>
   typeof source.binding[key] === "string" ? String(source.binding[key]) : "";
 
-const readBindingTransport = (source: Source): TransportValue => {
+const readBindingTransport = (source: Source): McpTransportValue => {
   const candidate = source.binding.transport;
   return typeof candidate === "string" &&
     (candidate === "auto" ||
@@ -413,19 +416,6 @@ const defaultFormState = (template?: SourceTemplate): SourceFormState => ({
         : namespaceFromUrl(template.endpoint ?? "")))
     : "",
   enabled: true,
-  transport:
-    template?.kind === "mcp"
-      ? template.connectionType === "command"
-        ? (template.transport ?? "stdio")
-        : (template.transport ?? "auto")
-      : "",
-  queryParamsText: "",
-  headersText: "",
-  command: template?.kind === "mcp" ? (template.command ?? "") : "",
-  argsText: template?.kind === "mcp" ? stringArrayToEditor(template.args) : "",
-  envText:
-    template?.kind === "mcp" ? stringMapToEditor(template.env ?? null) : "",
-  cwd: template?.kind === "mcp" ? (template.cwd ?? "") : "",
   specUrl: template && "specUrl" in template ? template.specUrl : "",
   service: template && "service" in template ? template.service : "",
   version: template && "version" in template ? template.version : "",
@@ -440,6 +430,18 @@ const defaultFormState = (template?: SourceTemplate): SourceFormState => ({
   oauthRefreshProviderId: "",
   oauthRefreshHandle: "",
   managedAuth: null,
+  ...(template?.kind === "mcp" && template.connectionType === "command"
+    ? defaultMcpStdioTransportFields({
+        command: template.command ?? "",
+        argsText: stringArrayToEditor(template.args),
+        envText: stringMapToEditor(template.env ?? null),
+        cwd: template.cwd ?? "",
+      })
+    : defaultMcpRemoteTransportFields(
+        template?.kind === "mcp"
+          ? asMcpRemoteTransportValue(template.transport)
+          : "",
+      )),
 });
 
 const formStateFromSource = (source: Source): SourceFormState => ({
@@ -448,16 +450,6 @@ const formStateFromSource = (source: Source): SourceFormState => ({
   endpoint: source.endpoint,
   namespace: source.namespace ?? "",
   enabled: source.enabled,
-  transport:
-    source.kind === "mcp" ? readBindingTransport(source) || "auto" : "",
-  queryParamsText: stringMapToEditor(
-    readBindingStringMap(source, "queryParams"),
-  ),
-  headersText: stringMapToEditor(readBindingStringMap(source, "headers")),
-  command: readBindingString(source, "command"),
-  argsText: stringArrayToEditor(readBindingStringArray(source, "args")),
-  envText: stringMapToEditor(readBindingStringMap(source, "env")),
-  cwd: readBindingString(source, "cwd"),
   specUrl: readBindingString(source, "specUrl"),
   service: readBindingString(source, "service"),
   version: readBindingString(source, "version"),
@@ -493,6 +485,26 @@ const formStateFromSource = (source: Source): SourceFormState => ({
     source.auth.kind === "mcp_oauth"
       ? source.auth
       : null,
+  ...(source.kind === "mcp" && readBindingTransport(source) === "stdio"
+    ? defaultMcpStdioTransportFields({
+        command: readBindingString(source, "command"),
+        argsText: stringArrayToEditor(readBindingStringArray(source, "args")),
+        envText: stringMapToEditor(readBindingStringMap(source, "env")),
+        cwd: readBindingString(source, "cwd"),
+      })
+    : defaultMcpRemoteTransportFields(
+        source.kind === "mcp"
+          ? asMcpRemoteTransportValue(readBindingTransport(source) || "auto")
+          : "",
+      )),
+  ...(source.kind === "mcp" && readBindingTransport(source) !== "stdio"
+    ? {
+        queryParamsText: stringMapToEditor(
+          readBindingStringMap(source, "queryParams"),
+        ),
+        headersText: stringMapToEditor(readBindingStringMap(source, "headers")),
+      }
+    : {}),
 });
 
 const parseJsonStringMap = (
@@ -616,13 +628,14 @@ const buildRequestedSourceStatus = (
 const buildSourcePayload = (state: SourceFormState): CreateSourcePayload => {
   const name = state.name.trim();
   const isMcpStdio = state.kind === "mcp" && state.transport === "stdio";
-  const endpoint = isMcpStdio
-    ? buildSyntheticMcpStdioEndpoint({
-        name: state.name,
-        endpoint: state.endpoint,
-        command: state.command,
-      })
-    : state.endpoint.trim();
+  const endpoint =
+    state.kind === "mcp" && state.transport === "stdio"
+      ? buildSyntheticMcpStdioEndpoint({
+          name: state.name,
+          endpoint: state.endpoint,
+          command: state.command,
+        })
+      : state.endpoint.trim();
 
   if (!name) {
     throw new Error("Source name is required.");
@@ -649,28 +662,31 @@ const buildSourcePayload = (state: SourceFormState): CreateSourcePayload => {
   >;
 
   if (state.kind === "mcp") {
+    if (state.transport === "stdio") {
+      return {
+        ...shared,
+        binding: {
+          transport: "stdio",
+          queryParams: null,
+          headers: null,
+          command: state.command.trim(),
+          args: parseJsonStringArray("Args", state.argsText),
+          env: parseJsonStringMap("Environment", state.envText),
+          cwd: trimToNull(state.cwd),
+        },
+      };
+    }
+
     return {
       ...shared,
       binding: {
         transport: state.transport === "" ? "auto" : state.transport,
-        queryParams:
-          state.transport === "stdio"
-            ? null
-            : parseJsonStringMap("Query params", state.queryParamsText),
-        headers:
-          state.transport === "stdio"
-            ? null
-            : parseJsonStringMap("Request headers", state.headersText),
-        command: state.transport === "stdio" ? state.command.trim() : null,
-        args:
-          state.transport === "stdio"
-            ? parseJsonStringArray("Args", state.argsText)
-            : null,
-        env:
-          state.transport === "stdio"
-            ? parseJsonStringMap("Environment", state.envText)
-            : null,
-        cwd: state.transport === "stdio" ? trimToNull(state.cwd) : null,
+        queryParams: parseJsonStringMap("Query params", state.queryParamsText),
+        headers: parseJsonStringMap("Request headers", state.headersText),
+        command: null,
+        args: null,
+        env: null,
+        cwd: null,
       },
     };
   }
@@ -831,11 +847,40 @@ function SourceEditor(props: { mode: "create" | "edit"; source?: Source }) {
     oauthSecretRefTarget !== null &&
     expandedOauthSecretRefTarget === oauthSecretRefTarget;
 
-  const setField = <K extends keyof SourceFormState>(
+  const setField = <K extends keyof SourceFormBase>(
     key: K,
-    value: SourceFormState[K],
+    value: SourceFormBase[K],
   ) => {
     setFormState((current) => ({ ...current, [key]: value }));
+  };
+
+  const setTransport = (transport: McpTransportValue) => {
+    setFormState((current) => ({
+      ...current,
+      ...setMcpTransportFieldsTransport(current, transport),
+    }));
+  };
+
+  const setRemoteTransportField = <
+    K extends Exclude<keyof McpRemoteTransportFields, "transport">,
+  >(
+    key: K,
+    value: McpRemoteTransportFields[K],
+  ) => {
+    setFormState((current) =>
+      current.transport === "stdio" ? current : { ...current, [key]: value },
+    );
+  };
+
+  const setStdioTransportField = <
+    K extends Exclude<keyof McpStdioTransportFields, "transport">,
+  >(
+    key: K,
+    value: McpStdioTransportFields[K],
+  ) => {
+    setFormState((current) =>
+      current.transport === "stdio" ? { ...current, [key]: value } : current,
+    );
   };
 
   const applyTemplate = (template: SourceTemplate) => {
@@ -1145,9 +1190,7 @@ function SourceEditor(props: { mode: "create" | "edit"; source?: Source }) {
                 <Field label="Transport mode">
                   <SelectInput
                     value={formState.transport || "auto"}
-                    onChange={(value) =>
-                      setField("transport", value as TransportValue)
-                    }
+                    onChange={(value) => setTransport(value as McpTransportValue)}
                     options={transportOptions.map((value) => ({
                       value,
                       label: value,
@@ -1159,7 +1202,9 @@ function SourceEditor(props: { mode: "create" | "edit"; source?: Source }) {
                     <Field label="Command">
                       <TextInput
                         value={formState.command}
-                        onChange={(value) => setField("command", value)}
+                        onChange={(value) =>
+                          setStdioTransportField("command", value)
+                        }
                         placeholder="npx"
                         mono
                       />
@@ -1167,7 +1212,9 @@ function SourceEditor(props: { mode: "create" | "edit"; source?: Source }) {
                     <Field label="Working directory (optional)">
                       <TextInput
                         value={formState.cwd}
-                        onChange={(value) => setField("cwd", value)}
+                        onChange={(value) =>
+                          setStdioTransportField("cwd", value)
+                        }
                         placeholder="/path/to/project"
                         mono
                       />
@@ -1175,7 +1222,9 @@ function SourceEditor(props: { mode: "create" | "edit"; source?: Source }) {
                     <Field label="Args (JSON)" className="sm:col-span-2">
                       <CodeEditor
                         value={formState.argsText}
-                        onChange={(value) => setField("argsText", value)}
+                        onChange={(value) =>
+                          setStdioTransportField("argsText", value)
+                        }
                         placeholder={
                           '[\n  "-y",\n  "chrome-devtools-mcp@latest"\n]'
                         }
@@ -1184,7 +1233,9 @@ function SourceEditor(props: { mode: "create" | "edit"; source?: Source }) {
                     <Field label="Environment (JSON)" className="sm:col-span-2">
                       <CodeEditor
                         value={formState.envText}
-                        onChange={(value) => setField("envText", value)}
+                        onChange={(value) =>
+                          setStdioTransportField("envText", value)
+                        }
                         placeholder={
                           '{\n  "CHROME_PATH": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"\n}'
                         }
@@ -1196,14 +1247,18 @@ function SourceEditor(props: { mode: "create" | "edit"; source?: Source }) {
                     <Field label="Query params (JSON)">
                       <CodeEditor
                         value={formState.queryParamsText}
-                        onChange={(value) => setField("queryParamsText", value)}
+                        onChange={(value) =>
+                          setRemoteTransportField("queryParamsText", value)
+                        }
                         placeholder={'{\n  "workspace": "demo"\n}'}
                       />
                     </Field>
                     <Field label="Headers (JSON)">
                       <CodeEditor
                         value={formState.headersText}
-                        onChange={(value) => setField("headersText", value)}
+                        onChange={(value) =>
+                          setRemoteTransportField("headersText", value)
+                        }
                         placeholder={'{\n  "x-api-key": "..."\n}'}
                       />
                     </Field>

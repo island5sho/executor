@@ -41,6 +41,16 @@ import {
   sourceTemplates,
   type SourceTemplate,
 } from "./source-templates";
+import {
+  asMcpRemoteTransportValue,
+  defaultMcpRemoteTransportFields,
+  defaultMcpStdioTransportFields,
+  setMcpTransportFieldsTransport,
+  type McpRemoteTransportFields,
+  type McpStdioTransportFields,
+  type McpTransportFields,
+  type McpTransportValue,
+} from "./mcp-transport-state";
 import { getDomain } from "tldts";
 
 // ---------------------------------------------------------------------------
@@ -68,7 +78,7 @@ type ProbeAuthState = {
   headersText: string;
 };
 
-type ConnectFormState = {
+type ConnectFormBase = {
   kind: "mcp" | "openapi" | "graphql" | "google_discovery";
   endpoint: string;
   specUrl: string;
@@ -77,7 +87,6 @@ type ConnectFormState = {
   discoveryUrl: string;
   name: string;
   namespace: string;
-  transport: "" | "auto" | "streamable-http" | "sse" | "stdio";
   authKind: "none" | "bearer" | "oauth2";
   authHeaderName: string;
   authPrefix: string;
@@ -87,13 +96,9 @@ type ConnectFormState = {
   workspaceOauthClientId: string;
   oauthClientId: string;
   oauthClientSecret: string;
-  queryParamsText: string;
-  headersText: string;
-  command: string;
-  argsText: string;
-  envText: string;
-  cwd: string;
 };
+
+type ConnectFormState = ConnectFormBase & McpTransportFields;
 
 type OAuthRequiredInfo = {
   source: Source;
@@ -118,9 +123,12 @@ const kindOptions: ReadonlyArray<ConnectFormState["kind"]> = [
   "google_discovery",
 ];
 
-const transportOptions: ReadonlyArray<
-  "auto" | "streamable-http" | "sse" | "stdio"
-> = ["auto", "streamable-http", "sse", "stdio"];
+const transportOptions: ReadonlyArray<Exclude<McpTransportValue, "">> = [
+  "auto",
+  "streamable-http",
+  "sse",
+  "stdio",
+];
 
 const authOptions: ReadonlyArray<ConnectFormState["authKind"]> = [
   "none",
@@ -316,7 +324,6 @@ const defaultConnectForm = (
       name: discovery?.name ?? "",
       namespace:
         discovery?.namespace || namespaceFromUrl(discovery?.endpoint ?? ""),
-      transport: "",
       authKind: "none",
       authHeaderName: "Authorization",
       authPrefix: "Bearer ",
@@ -326,12 +333,7 @@ const defaultConnectForm = (
       workspaceOauthClientId: "",
       oauthClientId: "",
       oauthClientSecret: "",
-      queryParamsText: "",
-      headersText: "",
-      command: "",
-      argsText: "",
-      envText: "",
-      cwd: "",
+      ...defaultMcpRemoteTransportFields(),
     };
   }
 
@@ -374,7 +376,6 @@ const defaultConnectForm = (
     discoveryUrl: googleDiscoveryDefaults?.discoveryUrl ?? "",
     name: discovery.name ?? "",
     namespace: discovery.namespace || namespaceFromUrl(discovery.endpoint),
-    transport: kind === "mcp" ? (discovery.transport ?? "auto") : "",
     authKind,
     authHeaderName,
     authPrefix,
@@ -384,12 +385,9 @@ const defaultConnectForm = (
     workspaceOauthClientId: "",
     oauthClientId: "",
     oauthClientSecret: "",
-    queryParamsText: "",
-    headersText: "",
-    command: "",
-    argsText: "",
-    envText: "",
-    cwd: "",
+    ...defaultMcpRemoteTransportFields(
+      kind === "mcp" ? asMcpRemoteTransportValue(discovery.transport) : "",
+    ),
   };
 };
 
@@ -409,18 +407,20 @@ const connectFormFromTemplate = (
     ("service" in template
       ? googleDiscoveryNamespace(template.service)
       : namespaceFromUrl(template.endpoint ?? "")),
-  transport:
-    template.kind === "mcp"
-      ? template.connectionType === "command"
-        ? (template.transport ?? "stdio")
-        : (template.transport ?? "auto")
-      : "",
   authKind: template.kind === "google_discovery" ? "oauth2" : "none",
   workspaceOauthClientId: "",
-  command: template.kind === "mcp" ? (template.command ?? "") : "",
-  argsText: template.kind === "mcp" ? stringifyStringArray(template.args) : "",
-  envText: template.kind === "mcp" ? stringifyStringMap(template.env) : "",
-  cwd: template.kind === "mcp" ? (template.cwd ?? "") : "",
+  ...(template.kind === "mcp" && template.connectionType === "command"
+    ? defaultMcpStdioTransportFields({
+        command: template.command ?? "",
+        argsText: stringifyStringArray(template.args),
+        envText: stringifyStringMap(template.env),
+        cwd: template.cwd ?? "",
+      })
+    : defaultMcpRemoteTransportFields(
+        template.kind === "mcp"
+          ? asMcpRemoteTransportValue(template.transport)
+          : "",
+      )),
 });
 
 const authKindForSourceKind = (
@@ -463,34 +463,44 @@ const buildProbeAuth = (
 
 const buildConnectPayload = (form: ConnectFormState): ConnectSourcePayload => {
   if (form.kind === "mcp") {
-    const transport = form.transport === "" ? "auto" : form.transport;
-    const isStdio = transport === "stdio";
-    const endpoint = isStdio
-      ? buildSyntheticMcpStdioEndpoint({
-          name: form.name,
-          endpoint: form.endpoint,
-          command: form.command,
-        })
-      : form.endpoint.trim();
-    if (!isStdio && !endpoint) throw new Error("Endpoint is required.");
-    if (isStdio && !form.command.trim())
-      throw new Error("Command is required for stdio MCP sources.");
+    if (form.transport === "stdio") {
+      const endpoint = buildSyntheticMcpStdioEndpoint({
+        name: form.name,
+        endpoint: form.endpoint,
+        command: form.command,
+      });
+      if (!form.command.trim()) {
+        throw new Error("Command is required for stdio MCP sources.");
+      }
+      return {
+        kind: "mcp",
+        endpoint,
+        name: trimToNull(form.name),
+        namespace: trimToNull(form.namespace),
+        transport: "stdio",
+        queryParams: null,
+        headers: null,
+        command: form.command.trim(),
+        args: parseJsonStringArray("Args", form.argsText),
+        env: parseJsonStringMap("Environment", form.envText),
+        cwd: trimToNull(form.cwd),
+      };
+    }
+
+    const endpoint = form.endpoint.trim();
+    if (!endpoint) throw new Error("Endpoint is required.");
     return {
       kind: "mcp",
       endpoint,
       name: trimToNull(form.name),
       namespace: trimToNull(form.namespace),
-      transport,
-      queryParams: isStdio
-        ? null
-        : parseJsonStringMap("Query params", form.queryParamsText),
-      headers: isStdio
-        ? null
-        : parseJsonStringMap("Request headers", form.headersText),
-      command: isStdio ? form.command.trim() : null,
-      args: isStdio ? parseJsonStringArray("Args", form.argsText) : null,
-      env: isStdio ? parseJsonStringMap("Environment", form.envText) : null,
-      cwd: isStdio ? trimToNull(form.cwd) : null,
+      transport: form.transport === "" ? "auto" : form.transport,
+      queryParams: parseJsonStringMap("Query params", form.queryParamsText),
+      headers: parseJsonStringMap("Request headers", form.headersText),
+      command: null,
+      args: null,
+      env: null,
+      cwd: null,
     };
   }
 
@@ -831,11 +841,40 @@ export function AddSourcePage() {
     text: string;
   } | null>(null);
 
-  const setFormField = <K extends keyof ConnectFormState>(
+  const setFormField = <K extends keyof ConnectFormBase>(
     key: K,
-    value: ConnectFormState[K],
+    value: ConnectFormBase[K],
   ) => {
     setConnectForm((current) => ({ ...current, [key]: value }));
+  };
+
+  const setTransport = (transport: McpTransportValue) => {
+    setConnectForm((current) => ({
+      ...current,
+      ...setMcpTransportFieldsTransport(current, transport),
+    }));
+  };
+
+  const setRemoteTransportField = <
+    K extends Exclude<keyof McpRemoteTransportFields, "transport">,
+  >(
+    key: K,
+    value: McpRemoteTransportFields[K],
+  ) => {
+    setConnectForm((current) =>
+      current.transport === "stdio" ? current : { ...current, [key]: value },
+    );
+  };
+
+  const setStdioTransportField = <
+    K extends Exclude<keyof McpStdioTransportFields, "transport">,
+  >(
+    key: K,
+    value: McpStdioTransportFields[K],
+  ) => {
+    setConnectForm((current) =>
+      current.transport === "stdio" ? { ...current, [key]: value } : current,
+    );
   };
 
   const setSourceKind = (kind: ConnectFormState["kind"]) => {
@@ -943,24 +982,32 @@ export function AddSourcePage() {
 
     try {
       const result = await discoverSource.mutateAsync({ url: discoveryUrl });
-      const form = defaultConnectForm(result);
-      // Prefer the template's own values over whatever discover returned
-      form.name = template.name;
-      form.endpoint = template.endpoint ?? "";
-      form.namespace =
-        template.namespace ?? namespaceFromUrl(template.endpoint ?? "");
+      let form: ConnectFormState = {
+        ...defaultConnectForm(result),
+        name: template.name,
+        endpoint: template.endpoint ?? "",
+        namespace: template.namespace ?? namespaceFromUrl(template.endpoint ?? ""),
+      };
       if (template.kind === "mcp") {
-        form.transport =
-          template.connectionType === "command"
-            ? (template.transport ?? "stdio")
-            : (template.transport ?? form.transport);
-        form.command = template.command ?? "";
-        form.argsText = stringifyStringArray(template.args);
-        form.envText = stringifyStringMap(template.env);
-        form.cwd = template.cwd ?? "";
+        form = {
+          ...form,
+          ...(template.connectionType === "command"
+            ? defaultMcpStdioTransportFields({
+                command: template.command ?? "",
+                argsText: stringifyStringArray(template.args),
+                envText: stringifyStringMap(template.env),
+                cwd: template.cwd ?? "",
+              })
+            : defaultMcpRemoteTransportFields(
+                asMcpRemoteTransportValue(template.transport),
+              )),
+        };
       }
       if ("specUrl" in template) {
-        form.specUrl = template.specUrl;
+        form = {
+          ...form,
+          specUrl: template.specUrl,
+        };
       }
       setConnectForm(form);
       setPhase("editing");
@@ -1804,12 +1851,7 @@ export function AddSourcePage() {
                   <Field label="Transport mode">
                     <SelectInput
                       value={connectForm.transport || "auto"}
-                      onChange={(v) =>
-                        setFormField(
-                          "transport",
-                          v as ConnectFormState["transport"],
-                        )
-                      }
+                      onChange={(v) => setTransport(v as McpTransportValue)}
                       options={transportOptions.map((v) => ({
                         value: v,
                         label: v,
@@ -1821,7 +1863,7 @@ export function AddSourcePage() {
                       <Field label="Command">
                         <TextInput
                           value={connectForm.command}
-                          onChange={(v) => setFormField("command", v)}
+                          onChange={(v) => setStdioTransportField("command", v)}
                           placeholder="npx"
                           mono
                         />
@@ -1829,7 +1871,7 @@ export function AddSourcePage() {
                       <Field label="Working directory (optional)">
                         <TextInput
                           value={connectForm.cwd}
-                          onChange={(v) => setFormField("cwd", v)}
+                          onChange={(v) => setStdioTransportField("cwd", v)}
                           placeholder="/path/to/project"
                           mono
                         />
@@ -1837,7 +1879,9 @@ export function AddSourcePage() {
                       <Field label="Args (JSON)" className="sm:col-span-2">
                         <CodeEditor
                           value={connectForm.argsText}
-                          onChange={(v) => setFormField("argsText", v)}
+                          onChange={(v) =>
+                            setStdioTransportField("argsText", v)
+                          }
                           placeholder={
                             '[\n  "-y",\n  "chrome-devtools-mcp@latest"\n]'
                           }
@@ -1849,7 +1893,7 @@ export function AddSourcePage() {
                       >
                         <CodeEditor
                           value={connectForm.envText}
-                          onChange={(v) => setFormField("envText", v)}
+                          onChange={(v) => setStdioTransportField("envText", v)}
                           placeholder={
                             '{\n  "CHROME_PATH": "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"\n}'
                           }
@@ -1861,14 +1905,18 @@ export function AddSourcePage() {
                       <Field label="Query params (JSON)">
                         <CodeEditor
                           value={connectForm.queryParamsText}
-                          onChange={(v) => setFormField("queryParamsText", v)}
+                          onChange={(v) =>
+                            setRemoteTransportField("queryParamsText", v)
+                          }
                           placeholder={'{\n  "workspace": "demo"\n}'}
                         />
                       </Field>
                       <Field label="Headers (JSON)">
                         <CodeEditor
                           value={connectForm.headersText}
-                          onChange={(v) => setFormField("headersText", v)}
+                          onChange={(v) =>
+                            setRemoteTransportField("headersText", v)
+                          }
                           placeholder={'{\n  "x-api-key": "..."\n}'}
                         />
                       </Field>
