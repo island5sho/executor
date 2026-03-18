@@ -349,6 +349,7 @@ If you are exploring the repo, these are the directories that matter most:
 - One-time npm setup: either configure npm trusted publishing for `RhysSullivan/executor` with the workflow file `.github/workflows/publish-executor-package.yml`, or add a GitHub Actions secret named `NPM_TOKEN` that can publish the `executor` package.
 - Stable releases use a normal semver like `1.2.3` and publish to npm under `latest`.
 - Beta releases use a prerelease semver like `1.3.0-beta.1` and publish to npm under `beta`.
+- When a release should become an upgrade test fixture, capture a real workspace snapshot with `bun run fixture:release:capture -- ...` and commit it under [`packages/platform/control-plane/src/runtime/__fixtures__`](./packages/platform/control-plane/src/runtime/__fixtures__/README.md).
 
 ## Project status
 

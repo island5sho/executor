@@ -35,11 +35,15 @@ import { decodeSourceCredentialSelectionContent } from "./sources/source-credent
 import { persistSource } from "./sources/source-store";
 import { withControlPlaneClient } from "./execution/test-http-client";
 import { runtimeEffectError } from "./effect-errors";
-import { resolveLocalWorkspaceContext } from "./local/config";
+import {
+  resolveLocalWorkspaceContext,
+  writeProjectLocalExecutorConfig,
+} from "./local/config";
 import { writeLocalControlPlaneState } from "./local/control-plane-store";
 import { deriveLocalInstallation } from "./local/installation";
 import {
   buildLocalSourceArtifact,
+  readLocalSourceArtifact,
   writeLocalSourceArtifact,
 } from "./local/source-artifacts";
 import { writeLocalWorkspaceState } from "./local/workspace-state";
@@ -889,6 +893,110 @@ describe("control-plane-runtime", () => {
       expect(inspection.toolCount).toBe(1);
       expect(inspection.tools.map((tool) => tool.path)).toContain("graphql.viewer");
     }).pipe(Effect.provide(NodeFileSystem.layer)),
+  );
+
+  it.scoped("rebuilds missing connected source artifacts on startup", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const openApiServer = yield* makeOpenApiSpecServer;
+      const workspaceRoot = yield* fs.makeTempDirectoryScoped({
+        prefix: "executor-control-plane-runtime-startup-rebuild-",
+      });
+      const homeConfigPath = join(workspaceRoot, ".executor-home.jsonc");
+      const homeStateDirectory = join(workspaceRoot, ".executor-home-state");
+      const context = yield* resolveLocalWorkspaceContext({
+        workspaceRoot,
+        homeConfigPath,
+        homeStateDirectory,
+      });
+      const installation = deriveLocalInstallation(context);
+      const sourceId = SourceIdSchema.make("github");
+      const now = Date.now();
+      const source = yield* createSourceFromPayload({
+        workspaceId: installation.workspaceId,
+        sourceId,
+        payload: {
+          name: "GitHub",
+          kind: "openapi",
+          endpoint: openApiServer.baseUrl,
+          status: "connected",
+          enabled: true,
+          namespace: "github",
+          importAuthPolicy: "reuse_runtime",
+          binding: {
+            specUrl: openApiServer.specUrl,
+            defaultHeaders: null,
+          },
+          importAuth: { kind: "none" },
+          auth: { kind: "none" },
+        },
+        now,
+      }).pipe(Effect.orDie);
+
+      yield* writeProjectLocalExecutorConfig({
+        context,
+        config: {
+          sources: {
+            [sourceId]: {
+              kind: "openapi",
+              name: "GitHub",
+              namespace: "github",
+              connection: {
+                endpoint: openApiServer.baseUrl,
+              },
+              binding: {
+                specUrl: openApiServer.specUrl,
+                defaultHeaders: null,
+              },
+            },
+          },
+        },
+      });
+      yield* writeLocalWorkspaceState({
+        context,
+        state: {
+          version: 1,
+          sources: {
+            [sourceId]: {
+              status: source.status,
+              lastError: source.lastError,
+              sourceHash: source.sourceHash,
+              createdAt: source.createdAt,
+              updatedAt: source.updatedAt,
+            },
+          },
+          policies: {},
+        },
+      });
+
+      const runtime = yield* Effect.acquireRelease(
+        createControlPlaneRuntime({
+          workspaceRoot,
+          homeConfigPath,
+          homeStateDirectory,
+        }),
+        (createdRuntime) => Effect.promise(() => createdRuntime.close()).pipe(Effect.orDie),
+      );
+
+      const rebuiltArtifact = yield* readLocalSourceArtifact({
+        context,
+        sourceId,
+      }).pipe(Effect.provide(NodeFileSystem.layer));
+      expect(rebuiltArtifact).not.toBeNull();
+
+      const inspection = yield* withControlPlaneClient(
+        { runtime, accountId: installation.accountId },
+        (client) =>
+          client.sources.inspection({
+            path: {
+              workspaceId: installation.workspaceId,
+              sourceId,
+            },
+          }),
+      );
+      expect(inspection.tools.length).toBeGreaterThan(0);
+    }).pipe(Effect.provide(NodeFileSystem.layer)),
+    60_000,
   );
 
   it.scoped("returns an empty inspection bundle for auth-required sources without a catalog artifact", () =>

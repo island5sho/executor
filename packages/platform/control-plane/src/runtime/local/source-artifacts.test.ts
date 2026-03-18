@@ -12,10 +12,14 @@ import {
   readLocalSourceArtifact,
   writeLocalSourceArtifact,
 } from "./source-artifacts";
-import type { ResolvedLocalWorkspaceContext } from "./config";
+import { type ResolvedLocalWorkspaceContext } from "./config";
 import { createCatalogImportMetadata } from "@executor/source-core";
 import { createGraphqlCatalogFragment } from "@executor/source-graphql";
 import { createOpenApiCatalogFragment } from "@executor/source-openapi";
+import {
+  releaseWorkspaceFixtures,
+  resolveReleaseWorkspaceFixtureContext,
+} from "./release-upgrade-fixtures";
 
 const makeContext = (): Effect.Effect<
   ResolvedLocalWorkspaceContext,
@@ -324,4 +328,27 @@ describe("local-source-artifacts", () => {
         expect(decoded).toBeNull();
       }).pipe(Effect.provide(NodeFileSystem.layer)),
   );
+
+  for (const fixture of releaseWorkspaceFixtures) {
+    it.effect(
+      fixture.artifactExpectation === "cache-miss"
+        ? `treats the ${fixture.id} release fixture as a missing cache entry`
+        : `reads the ${fixture.id} release fixture`,
+      () =>
+        Effect.gen(function* () {
+          const context = yield* resolveReleaseWorkspaceFixtureContext(fixture);
+          const decoded = yield* readLocalSourceArtifact({
+            context,
+            sourceId: fixture.sourceId,
+          });
+
+          if (fixture.artifactExpectation === "cache-miss") {
+            expect(decoded).toBeNull();
+            return;
+          }
+
+          expect(decoded?.sourceId).toBe(fixture.sourceId);
+        }).pipe(Effect.provide(NodeFileSystem.layer)),
+    );
+  }
 });

@@ -37,6 +37,7 @@ import { synchronizeLocalWorkspaceState } from "./local/workspace-sync";
 import { ControlPlaneStore, type ControlPlaneStoreShape } from "./store";
 import { RuntimeSourceStoreLive } from "./sources/source-store";
 import { RuntimeSourceCatalogStoreLive } from "./catalog/source/runtime";
+import { reconcileMissingSourceCatalogArtifacts } from "./catalog/source/reconcile";
 import { RuntimeSourceAuthMaterialLive } from "./auth/source-auth-material";
 import { RuntimeSourceCatalogSyncLive } from "./catalog/source/sync";
 import {
@@ -276,6 +277,13 @@ export const createControlPlaneRuntime = (
     });
     const managedRuntime = ManagedRuntime.make(concreteRuntimeLayer);
     yield* managedRuntime.runtimeEffect;
+    yield* reconcileMissingSourceCatalogArtifacts({
+      workspaceId: localInstallation.workspaceId,
+      actorAccountId: localInstallation.accountId,
+    }).pipe(
+      Effect.provide(managedRuntime),
+      Effect.catchAll(() => Effect.void),
+    );
 
     return {
       persistence,
