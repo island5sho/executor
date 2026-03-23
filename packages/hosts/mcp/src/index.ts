@@ -13,6 +13,7 @@ import * as Effect from "effect/Effect";
 import * as Cause from "effect/Cause";
 import * as Exit from "effect/Exit";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod/v4";
 
@@ -56,6 +57,24 @@ export type ExecutorMcpRequestHandler = {
   handleRequest: (request: Request) => Promise<Response>;
   close: () => Promise<void>;
 };
+
+const waitForProcessExit = () =>
+  new Promise<void>((resolve) => {
+    const finish = () => {
+      process.off("SIGINT", finish);
+      process.off("SIGTERM", finish);
+      process.off("disconnect", finish);
+      process.stdin.off("end", finish);
+      process.stdin.off("close", finish);
+      resolve();
+    };
+
+    process.once("SIGINT", finish);
+    process.once("SIGTERM", finish);
+    process.once("disconnect", finish);
+    process.stdin.once("end", finish);
+    process.stdin.once("close", finish);
+  });
 
 const parseJsonValue = (value: string | null): unknown => {
   if (value === null) {
@@ -508,6 +527,21 @@ const createExecutorMcpServer = async (config: {
   server.server.oninitialized = syncToolAvailability;
 
   return server;
+};
+
+export const runExecutorMcpStdioServer = async (runtime: ExecutorRuntime): Promise<void> => {
+  const server = await createExecutorMcpServer({
+    runtime,
+  });
+  const transport = new StdioServerTransport();
+
+  try {
+    await server.connect(transport);
+    await waitForProcessExit();
+  } finally {
+    await transport.close().catch(() => undefined);
+    await server.close().catch(() => undefined);
+  }
 };
 
 const jsonErrorResponse = (status: number, code: number, message: string) =>

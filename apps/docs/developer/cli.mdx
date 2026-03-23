@@ -5,13 +5,16 @@ description: "How the executor CLI fits into the system and why it stays thin."
 
 The CLI lives in `apps/executor`.
 
-Its job is to be the installed user-facing shell around the local daemon, not the place where product logic is implemented.
+Its job is to be the installed user-facing shell around the local runtime, not the place where product logic is implemented.
+
+The main interactive entrypoints are foreground session commands such as `executor web` and `executor mcp`, plus `executor mcp --stdio` for local process-spawned MCP integrations.
 
 ## Responsibilities
 
 The CLI is responsible for:
 
-- starting and stopping the local daemon
+- starting foreground web and MCP sessions
+- optionally starting and stopping the detached local daemon for compatibility
 - checking daemon health and installation state
 - submitting executions
 - resuming paused interactions
@@ -39,7 +42,7 @@ It means the browser UI, CLI, and local MCP entrypoint all talk to the same prod
 
 At a high level, the CLI:
 
-1. ensures the local daemon is available
+1. starts a foreground local session or ensures the detached daemon is available
 2. calls the local HTTP API exposed by `packages/platform/server`
 3. hands off real work to `packages/platform/sdk` and `packages/platform/api`
 

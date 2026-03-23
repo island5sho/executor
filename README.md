@@ -122,10 +122,24 @@ If you want to use this a package distribution, install it via npm:
 
 ```bash
 npm install -g executor
-executor up
+executor web
 ```
 
-Then either tell your agent to use the CLI or to open the web UI and copy the MCP CLI install command.
+That starts a foreground local session, prints the local web URL, and keeps it alive until you press `Ctrl+C`.
+
+If you want the MCP endpoint instead, run:
+
+```bash
+executor mcp
+```
+
+That prints the local MCP URL and keeps the session alive until you press `Ctrl+C`.
+
+If you want a local stdio MCP server for agent configs such as Codex or OpenCode, run:
+
+```bash
+executor mcp --stdio
+```
 
 Then you can run the CLI as `executor`.
 
@@ -154,12 +168,20 @@ If you are using a packaged distribution, the command name is simply `executor` 
 ## Core CLI commands
 
 ```bash
+executor web
+executor mcp
+executor mcp --stdio
+executor call --file script.ts
+executor resume --execution-id exec_123
+```
+
+Compatibility commands for the detached daemon are still available:
+
+```bash
 executor up
 executor down
 executor status --json
 executor doctor --json
-executor call --file script.ts
-executor resume --execution-id exec_123
 ```
 
 `executor call` accepts code in three ways:

@@ -13,6 +13,7 @@ import {
   createExecutorApiEffectClient as createExecutorApiClient,
   type ExecutorApiEffectClient as ExecutorApiClient,
 } from "@executor/platform-api/effect";
+import { runExecutorMcpStdioServer } from "@executor/executor-mcp";
 import { createWorkspaceExecutorAdminToolMap } from "@executor/platform-internal";
 import {
   EXECUTOR_SOURCES_ADD_HELP_LINES,
@@ -36,6 +37,7 @@ import * as Option from "effect/Option";
 import * as Cause from "effect/Cause";
 
 import {
+  createLocalExecutorServer,
   DEFAULT_SERVER_BASE_URL,
   DEFAULT_SERVER_HOST,
   DEFAULT_LOCAL_DATA_DIR,
@@ -59,6 +61,11 @@ import {
   parseInteractionPayload,
 } from "./pending-interaction-output";
 import { decideInteractionHandling } from "./interaction-handling";
+import {
+  renderMcpSessionSummary,
+  renderUpSummary,
+  renderWebSessionSummary,
+} from "./session-summary";
 import {
   executorAppEffectError,
   type LocalServerReachabilityTimeoutError,
@@ -320,6 +327,8 @@ const printRootHelp = (workflow: string) =>
       "",
       "USAGE",
       "",
+      "  executor web [--port integer]",
+      "  executor mcp [--port integer] [--stdio] [--web-port integer]",
       "  executor call [code] [--file text] [--stdin] [--base-url text] [--no-open]",
       "  executor resume --execution-id text [--base-url text] [--no-open]",
       "",
@@ -329,14 +338,20 @@ const printRootHelp = (workflow: string) =>
       "",
       "COMMANDS",
       "",
+      "  web",
+      "    Start a foreground web session and print the local URL.",
+      "  mcp",
+      "    Start a foreground MCP session, or run stdio MCP with --stdio.",
       "  call",
       "    Execute code against the local executor server.",
       "  resume",
       "    Resume a paused execution.",
+      "  up / down / status / doctor",
+      "    Compatibility commands for the detached local daemon.",
       "",
       "TIP",
       "",
-      "  Run `executor call --help` for more examples.",
+      "  Run `executor web` for the browser UI, `executor mcp` for HTTP MCP, or `executor mcp --stdio` for local stdio MCP.",
     ].join("\n"));
   });
 
@@ -606,26 +621,6 @@ const renderStatus = (status: LocalServerStatus): string =>
     `workspaceId: ${status.installation?.workspaceId ?? "unavailable"}`,
   ].join("\n");
 
-const appendUrlPath = (baseUrl: string, pathname: string): string =>
-  new URL(pathname, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`).toString();
-
-const renderUpSummary = (input: {
-  started: boolean;
-  status: LocalServerStatus;
-}): string =>
-  [
-    input.started ? "Executor is ready." : "Executor is already running.",
-    `API: ${input.status.baseUrl}`,
-    `MCP: ${appendUrlPath(input.status.baseUrl, "mcp")}`,
-    `OpenAPI: ${appendUrlPath(input.status.baseUrl, "v1/openapi.json")}`,
-    `Workspace: ${input.status.installation?.workspaceId ?? "unavailable"}`,
-    "",
-    "Try next:",
-    `  ${CLI_NAME} call 'return 1 + 1'`,
-    `  ${CLI_NAME} status`,
-    `  ${CLI_NAME} down`,
-  ].join("\n");
-
 const getDoctorReport = (baseUrl: string) =>
   getServerStatus(baseUrl).pipe(
     Effect.map((status) => {
@@ -731,6 +726,54 @@ const ensureServer = (baseUrl: string = DEFAULT_SERVER_BASE_URL) =>
       started: true,
     } as const;
   });
+
+const waitForShutdownSignal = () =>
+  Effect.async<void, never>((resume) => {
+    const shutdown = () => resume(Effect.void);
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+
+    return Effect.sync(() => {
+      process.off("SIGINT", shutdown);
+      process.off("SIGTERM", shutdown);
+    });
+  });
+
+const runForegroundSession = (input: {
+  kind: "web" | "mcp";
+  port: number;
+}) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const server = yield* createLocalExecutorServer(getDefaultServerOptions(input.port));
+      const workspaceId = server.runtime.localInstallation.scopeId;
+      const summary = input.kind === "web"
+        ? renderWebSessionSummary({
+            baseUrl: server.baseUrl,
+            workspaceId,
+          })
+        : renderMcpSessionSummary({
+            baseUrl: server.baseUrl,
+            workspaceId,
+          });
+
+      yield* printText(summary);
+      yield* waitForShutdownSignal();
+    }),
+  );
+
+const runStdioMcpSession = (webPort?: number) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const server = yield* createLocalExecutorServer(
+        getDefaultServerOptions(webPort ?? 0),
+      );
+      yield* Effect.tryPromise({
+        try: () => runExecutorMcpStdioServer(server.runtime),
+        catch: toError,
+      });
+    }),
+  );
 
 
 
@@ -1161,6 +1204,27 @@ const serverCommand = Command.make("server").pipe(
   Command.withDescription("Local server commands"),
 );
 
+const webCommand = Command.make(
+  "web",
+  {
+    port: Options.integer("port").pipe(Options.withDefault(DEFAULT_SERVER_PORT)),
+  },
+  ({ port }) => runForegroundSession({ kind: "web", port }),
+).pipe(Command.withDescription("Start a foreground web session and print the local URL"));
+
+const mcpCommand = Command.make(
+  "mcp",
+  {
+    port: Options.integer("port").pipe(Options.withDefault(DEFAULT_SERVER_PORT)),
+    stdio: Options.boolean("stdio").pipe(Options.withDefault(false)),
+    webPort: Options.integer("web-port").pipe(Options.optional),
+  },
+  ({ port, stdio, webPort }) =>
+    stdio
+      ? runStdioMcpSession(Option.getOrUndefined(webPort))
+      : runForegroundSession({ kind: "mcp", port }),
+).pipe(Command.withDescription("Start a foreground MCP session, or run stdio MCP with --stdio"));
+
 const upCommand = Command.make(
   "up",
   {
@@ -1359,6 +1423,8 @@ const devCommand = Command.make("dev").pipe(
 const root = Command.make("executor").pipe(
   Command.withSubcommands([
     serverCommand,
+    webCommand,
+    mcpCommand,
     upCommand,
     downCommand,
     statusCommand,
