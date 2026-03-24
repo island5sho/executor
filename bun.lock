@@ -32,6 +32,7 @@
         "@executor/platform-internal": "workspace:*",
         "@executor/platform-sdk": "workspace:*",
         "@executor/platform-sdk-file": "workspace:*",
+        "@executor/plugin-openapi-sdk": "workspace:*",
         "@executor/server": "workspace:*",
         "effect": "catalog:",
       },
@@ -51,6 +52,7 @@
       "name": "@executor/web",
       "version": "0.0.0",
       "dependencies": {
+        "@executor/plugin-openapi-react": "workspace:*",
         "@executor/react": "workspace:*",
         "@executor/server": "workspace:*",
         "@shikijs/langs": "^4.0.1",
@@ -343,7 +345,6 @@
         "@executor/runtime-deno-subprocess": "workspace:*",
         "@executor/runtime-quickjs": "workspace:*",
         "@executor/runtime-ses": "workspace:*",
-        "@executor/source-builtins": "workspace:*",
         "@executor/source-core": "workspace:*",
         "effect": "catalog:",
       },
@@ -393,6 +394,9 @@
         "@executor/platform-internal": "workspace:*",
         "@executor/platform-sdk": "workspace:*",
         "@executor/platform-sdk-file": "workspace:*",
+        "@executor/plugin-openapi-http": "workspace:*",
+        "@executor/plugin-openapi-sdk": "workspace:*",
+        "@executor/plugin-openapi-shared": "workspace:*",
         "@opentelemetry/api": "^1.9.0",
         "@opentelemetry/exporter-trace-otlp-grpc": "^0.213.0",
         "@opentelemetry/resources": "^2.6.0",
@@ -400,17 +404,6 @@
         "@opentelemetry/sdk-trace-node": "^2.6.0",
         "@opentelemetry/semantic-conventions": "^1.40.0",
         "effect": "catalog:",
-      },
-      "devDependencies": {
-        "@types/node": "catalog:",
-        "bun-types": "catalog:",
-      },
-    },
-    "packages/sources/builtins": {
-      "name": "@executor/source-builtins",
-      "version": "0.0.0",
-      "dependencies": {
-        "@executor/source-core": "workspace:*",
       },
       "devDependencies": {
         "@types/node": "catalog:",
@@ -426,6 +419,64 @@
         "@executor/ir": "workspace:*",
         "@modelcontextprotocol/sdk": "^1.26.0",
         "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "bun-types": "catalog:",
+      },
+    },
+    "plugins/openapi/http": {
+      "name": "@executor/plugin-openapi-http",
+      "version": "0.0.0",
+      "dependencies": {
+        "@effect/platform": "catalog:",
+        "@executor/platform-api": "workspace:*",
+        "@executor/platform-sdk": "workspace:*",
+        "@executor/plugin-openapi-shared": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "bun-types": "catalog:",
+      },
+    },
+    "plugins/openapi/react": {
+      "name": "@executor/plugin-openapi-react",
+      "version": "0.0.0",
+      "dependencies": {
+        "@executor/plugin-openapi-http": "workspace:*",
+        "@executor/plugin-openapi-shared": "workspace:*",
+        "@executor/react": "workspace:*",
+        "@tanstack/react-router": "^1.132.7",
+        "react": "^19.2.0",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "@types/react": "^19.2.10",
+        "bun-types": "catalog:",
+      },
+    },
+    "plugins/openapi/sdk": {
+      "name": "@executor/plugin-openapi-sdk",
+      "version": "0.0.0",
+      "dependencies": {
+        "@executor/platform-sdk": "workspace:*",
+        "@executor/plugin-openapi-shared": "workspace:*",
+        "@executor/source-core": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@types/node": "catalog:",
+        "bun-types": "catalog:",
+      },
+    },
+    "plugins/openapi/shared": {
+      "name": "@executor/plugin-openapi-shared",
+      "version": "0.0.0",
+      "dependencies": {
+        "@executor/source-core": "workspace:*",
+        "effect": "catalog:",
+        "yaml": "^2.8.1",
       },
       "devDependencies": {
         "@types/node": "catalog:",
@@ -663,6 +714,14 @@
 
     "@executor/platform-sdk-file": ["@executor/platform-sdk-file@workspace:packages/platform/sdk-file"],
 
+    "@executor/plugin-openapi-http": ["@executor/plugin-openapi-http@workspace:plugins/openapi/http"],
+
+    "@executor/plugin-openapi-react": ["@executor/plugin-openapi-react@workspace:plugins/openapi/react"],
+
+    "@executor/plugin-openapi-sdk": ["@executor/plugin-openapi-sdk@workspace:plugins/openapi/sdk"],
+
+    "@executor/plugin-openapi-shared": ["@executor/plugin-openapi-shared@workspace:plugins/openapi/shared"],
+
     "@executor/react": ["@executor/react@workspace:packages/clients/react"],
 
     "@executor/runtime-deno-subprocess": ["@executor/runtime-deno-subprocess@workspace:packages/kernel/runtime-deno-subprocess"],
@@ -674,8 +733,6 @@
     "@executor/serve-skills-via-mcp-demo": ["@executor/serve-skills-via-mcp-demo@workspace:examples/serve-skills-via-mcp"],
 
     "@executor/server": ["@executor/server@workspace:packages/platform/server"],
-
-    "@executor/source-builtins": ["@executor/source-builtins@workspace:packages/sources/builtins"],
 
     "@executor/source-core": ["@executor/source-core@workspace:packages/sources/core"],
 

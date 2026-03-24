@@ -1,18 +1,22 @@
 {
-  "name": "@executor/source-builtins",
+  "name": "@executor/plugin-openapi-http",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./index.ts"
   },
   "files": [
-    "src"
+    "index.ts"
   ],
   "scripts": {
     "typecheck": "bunx tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@executor/source-core": "workspace:*"
+    "@effect/platform": "catalog:",
+    "@executor/platform-api": "workspace:*",
+    "@executor/platform-sdk": "workspace:*",
+    "@executor/plugin-openapi-shared": "workspace:*",
+    "effect": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",

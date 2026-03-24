@@ -1,6 +1,8 @@
+import { Link } from "@tanstack/react-router";
 import { useSources } from "@executor/react";
 import { LoadableBlock } from "../components/loadable";
 import { Badge } from "../components/ui/badge";
+import { Button } from "../components/ui/button";
 import { SourcePluginsResetState } from "../components/source-plugins-reset-state";
 
 export function HomePage() {
@@ -14,22 +16,34 @@ export function HomePage() {
             Sources
           </div>
           <h1 className="mt-5 font-display text-3xl tracking-tight text-foreground lg:text-4xl">
-            Source plugins have been removed from the product shell
+            OpenAPI is now mounted as a source plugin
           </h1>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-            The built-in OpenAPI, GraphQL, MCP, and Google Discovery flows are
-            intentionally stripped out. This leaves the workspace UI in a clean
-            slate state while the plugin registration model is rebuilt.
+            The product shell is still in transition, but the first plugin-backed
+            surface is wired in for OpenAPI so the frontend and backend boundaries
+            are visible in the app again.
           </p>
         </div>
 
         <div className="mt-8">
           <LoadableBlock loadable={sources} loading="Loading sources...">
             {(items) =>
-              items.length === 0 ? (
+              !Array.isArray(items) ? (
                 <SourcePluginsResetState
-                  title="No registered source plugins"
-                  message="No source plugins are registered in this build, so new sources cannot be added from the UI yet."
+                  title="Unexpected sources payload"
+                  message="The sources list returned data in an unexpected shape."
+                />
+              ) : items.length === 0 ? (
+                <SourcePluginsResetState
+                  title="No sources connected yet"
+                  message="The OpenAPI source plugin is registered. Use the add flow to inspect the plugin-owned UI surface."
+                  action={(
+                    <Link to="/sources/add">
+                      <Button size="sm" variant="outline">
+                        Open OpenAPI Plugin
+                      </Button>
+                    </Link>
+                  )}
                 />
               ) : (
                 <div className="grid gap-3">

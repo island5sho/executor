@@ -11,9 +11,6 @@ import * as Layer from "effect/Layer";
 import * as ManagedRuntime from "effect/ManagedRuntime";
 
 import {
-  RuntimeSourceAuthMaterialLive,
-} from "./auth/source-auth-material";
-import {
   RuntimeSourceCatalogStoreService,
   RuntimeSourceCatalogStoreLive,
 } from "./catalog/source/runtime";
@@ -93,9 +90,6 @@ import {
   type ExecutorStateStoreShape,
 } from "./executor-state-store";
 import {
-  RuntimeSourceAuthServiceLive,
-} from "./sources/source-auth-service";
-import {
   RuntimeSourceStoreLive,
 } from "./sources/source-store";
 
@@ -105,7 +99,6 @@ export * from "./execution/live";
 export * from "./catalog/schema-type-signature";
 export * from "./catalog/source/runtime";
 export * from "./catalog/source/sync";
-export * from "./sources/source-auth-service";
 export * from "./sources/source-credential-interactions";
 export * from "./sources/source-store";
 export * from "./executor-state-store";
@@ -131,22 +124,13 @@ export type {
   UpdateSecretMaterial,
 } from "./scope/secret-material-providers";
 export {
-  builtInSourceAdapters,
-  connectableSourceAdapters,
-  executorAddableSourceAdapters,
-  localConfigurableSourceAdapters,
-  hasRegisteredConnectableSourceAdapters,
-  hasRegisteredExecutorAddableSourceAdapters,
-  hasRegisteredExternalSourceAdapters,
-  getSourceAdapter,
-  getSourceAdapterForSource,
-  findSourceAdapterByProviderKey,
-  sourceBindingStateFromSource,
-  sourceAdapterCatalogKind,
-  sourceAdapterRequiresInteractiveConnect,
-  sourceAdapterUsesCredentialManagedAuth,
-  isInternalSourceAdapter,
-} from "./sources/source-adapters";
+  registeredSourcePlugins,
+  hasRegisteredExternalSourcePlugins,
+  getSourcePlugin,
+  getSourcePluginForSource,
+  sourcePluginCatalogKind,
+  isInternalSourcePluginKind,
+} from "./sources/source-plugins";
 
 export type ExecutorRuntimeOptions = {
   executionResolver?: ResolveExecutionEnvironment;
@@ -213,15 +197,6 @@ export type RuntimeSecretMaterialServices = {
   update: UpdateSecretMaterial;
 };
 
-export type RuntimeAuthStorageServices = {
-  artifacts: ExecutorStateStoreShape["authArtifacts"];
-  leases: ExecutorStateStoreShape["authLeases"];
-  sourceOauthClients: ExecutorStateStoreShape["sourceOauthClients"];
-  scopeOauthClients: ExecutorStateStoreShape["scopeOauthClients"];
-  providerGrants: ExecutorStateStoreShape["providerAuthGrants"];
-  sourceSessions: ExecutorStateStoreShape["sourceAuthSessions"];
-};
-
 export const prewarmWorkspaceSourceCatalogToolIndex = (input: {
   scopeId: LocalInstallation["scopeId"];
   actorScopeId: LocalInstallation["actorScopeId"];
@@ -253,7 +228,6 @@ export type RuntimeStorageServices = {
   scopeConfig: BoundScopeConfigStore;
   scopeState: BoundScopeStateStore;
   sourceArtifacts: BoundSourceArtifactStore;
-  auth: RuntimeAuthStorageServices;
   secrets: RuntimeSecretsStorageServices;
   executions: RuntimeExecutionStorageServices;
   close?: () => Promise<void>;
@@ -327,12 +301,6 @@ const makeInstanceConfigLayer = (input: RuntimeInstanceConfigService) =>
 const toExecutorStateStoreShape = (
   input: RuntimeStorageServices,
 ): ExecutorStateStoreShape => ({
-  authArtifacts: input.auth.artifacts,
-  authLeases: input.auth.leases,
-  sourceOauthClients: input.auth.sourceOauthClients,
-  scopeOauthClients: input.auth.scopeOauthClients,
-  providerAuthGrants: input.auth.providerGrants,
-  sourceAuthSessions: input.auth.sourceSessions,
   secretMaterials: input.secrets,
   executions: input.executions.runs,
   executionInteractions: input.executions.interactions,
@@ -387,27 +355,9 @@ export const createExecutorRuntimeLayer = (
     Layer.provide(Layer.mergeAll(baseLayer, sourceStoreLayer)),
   );
 
-  const sourceAuthMaterialLayer = RuntimeSourceAuthMaterialLive.pipe(
-    Layer.provide(Layer.mergeAll(baseLayer, secretMaterialLayer)),
-  );
-
   const sourceCatalogSyncLayer = RuntimeSourceCatalogSyncLive.pipe(
     Layer.provide(
-      Layer.mergeAll(baseLayer, secretMaterialLayer, sourceAuthMaterialLayer),
-    ),
-  );
-
-  const sourceAuthLayer = RuntimeSourceAuthServiceLive({
-    getLocalServerBaseUrl: input.getLocalServerBaseUrl,
-  }).pipe(
-    Layer.provide(
-      Layer.mergeAll(
-        baseLayer,
-        instanceConfigLayer,
-        secretMaterialLayer,
-        sourceStoreLayer,
-        sourceCatalogSyncLayer,
-      ),
+      Layer.mergeAll(baseLayer, secretMaterialLayer),
     ),
   );
 
@@ -421,9 +371,7 @@ export const createExecutorRuntimeLayer = (
         instanceConfigLayer,
         secretMaterialLayer,
         sourceStoreLayer,
-        sourceAuthMaterialLayer,
         sourceCatalogSyncLayer,
-        sourceAuthLayer,
         sourceCatalogStoreLayer,
         localToolRuntimeLayer,
       ),
@@ -435,11 +383,9 @@ export const createExecutorRuntimeLayer = (
     instanceConfigLayer,
     secretMaterialLayer,
     sourceStoreLayer,
-    sourceAuthMaterialLayer,
     sourceCatalogSyncLayer,
     sourceCatalogStoreLayer,
     localToolRuntimeLayer,
-    sourceAuthLayer,
     executionResolverLayer,
   ) as ExecutorRuntimeLayer;
 };

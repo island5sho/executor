@@ -1,11 +1,15 @@
 export {
+  CoreExecutorApi,
+  createExecutorApi,
+  createExecutorOpenApiSpec,
   ExecutorApi,
   executorOpenApiSpec,
 } from "./api";
-export {
-  createExecutorApiClient,
-  type ExecutorApiClient,
-} from "./client";
+export type {
+  ExecutorHttpApiExtension,
+  ExecutorHttpPlugin,
+  ExecutorHttpPluginGroups,
+} from "./plugins";
 
 export type { LocalInstallation } from "@executor/platform-sdk/schema";
 
@@ -38,11 +42,7 @@ export {
 } from "./local/api";
 
 export {
-  CreateSourcePayloadSchema,
   SourcesApi,
-  UpdateSourcePayloadSchema,
-  type CreateSourcePayload,
-  type UpdateSourcePayload,
 } from "./sources/api";
 
 export {

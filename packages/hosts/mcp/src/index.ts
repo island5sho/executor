@@ -6,7 +6,6 @@ import {
   RuntimeSourceCatalogStoreService,
   createExecution,
   getExecution,
-  hasRegisteredExecutorAddableSourceAdapters,
   resumeExecution,
   type ExecutorRuntime,
 } from "@executor/platform-sdk/runtime";
@@ -173,16 +172,9 @@ const buildExecuteWorkflowText = (
     '1) const matches = await tools.discover({ query: "<intent>", limit: 12 });',
     "2) const details = await tools.describe.tool({ path, includeSchemas: true });",
     "3) Call selected tools.<path>(input).",
-    ...(hasRegisteredExecutorAddableSourceAdapters
-      ? [
-          "4) To connect a source plugin, call tools.executor.sources.add(...).",
-          ...EXECUTOR_SOURCES_ADD_HELP_LINES,
-          "5) If execution pauses for interaction, resume it with the returned resumePayload or the available resume flow.",
-        ]
-      : [
-          "4) Source plugins are not registered in this build.",
-          "5) If execution pauses for interaction, resume it with the returned resumePayload or the available resume flow.",
-        ]),
+    "4) Source plugins are not registered in this build.",
+    ...EXECUTOR_SOURCES_ADD_HELP_LINES,
+    "5) If execution pauses for interaction, resume it with the returned resumePayload or the available resume flow.",
     "Do not use fetch; use tools.* only.",
   ].join("\n");
 

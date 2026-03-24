@@ -13,6 +13,7 @@
   "dependencies": {
     "@effect-atom/atom": "0.5.3",
     "@effect-atom/atom-react": "0.5.0",
+    "@effect/platform": "catalog:",
     "@executor/platform-api": "workspace:*",
     "@executor/platform-sdk": "workspace:*",
     "effect": "catalog:"
@@ -21,7 +22,6 @@
     "react": ">=18 <20"
   },
   "devDependencies": {
-    "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@effect/vitest": "catalog:",
     "@executor/effect-test-utils": "workspace:*",

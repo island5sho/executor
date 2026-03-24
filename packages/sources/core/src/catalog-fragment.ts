@@ -117,7 +117,7 @@ const createServiceScope = (input: {
 export const buildCatalogFragment = (input: {
   source: Pick<
     Source,
-    "id" | "kind" | "name" | "endpoint" | "namespace" | "binding" | "auth"
+    "id" | "kind" | "name" | "endpoint" | "namespace"
   >;
   documents: readonly CatalogSourceDocumentInput[];
   serviceScopeDefaults?: Scope["defaults"];

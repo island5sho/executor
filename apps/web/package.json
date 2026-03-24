@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production bun src/server.ts"
   },
   "dependencies": {
+    "@executor/plugin-openapi-react": "workspace:*",
     "@executor/react": "workspace:*",
     "@executor/server": "workspace:*",
     "@shikijs/langs": "^4.0.1",

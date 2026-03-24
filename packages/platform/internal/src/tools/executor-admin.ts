@@ -24,7 +24,6 @@ import {
   SecretMaterialUpdaterService,
   type ExecutorStateStoreShape,
   type ScopeInternalToolContext as WorkspaceInternalToolContext,
-  RuntimeSourceAuthService,
   RuntimeSourceCatalogSyncService,
   RuntimeSourceStore,
   RuntimeSourceStoreService,
@@ -69,7 +68,6 @@ import {
   removeSource,
   updateLocalSecret,
   updatePolicy,
-  updateSource,
 } from "@executor/platform-sdk/operations";
 import {
   CreatePolicyPayloadSchema,
@@ -77,10 +75,6 @@ import {
   type UpdatePolicyPayload,
   UpdatePolicyPayloadSchema,
 } from "@executor/platform-sdk/contracts";
-import {
-  UpdateSourcePayloadSchema,
-} from "@executor/platform-sdk/contracts";
-
 const emptyInputSchema = Schema.standardSchemaV1(Schema.Struct({}));
 const localInstallationOutputSchema = Schema.standardSchemaV1(
   LocalInstallationSchema,
@@ -115,12 +109,6 @@ const listSourcesOutputSchema = Schema.standardSchemaV1(
 const getSourceInputSchema = Schema.standardSchemaV1(
   Schema.Struct({
     sourceId: SourceIdSchema,
-  }),
-);
-const updateSourceInputSchema = Schema.standardSchemaV1(
-  Schema.Struct({
-    sourceId: SourceIdSchema,
-    payload: UpdateSourcePayloadSchema,
   }),
 );
 const inspectToolInputSchema = Schema.standardSchemaV1(
@@ -379,28 +367,6 @@ export const createWorkspaceExecutorAdminToolMap = (
               scopeId: input.scopeId,
               sourceId: sourceId as never,
               actorScopeId: input.actorScopeId as never,
-            }),
-            runtimeLayer,
-            runtimeLocalScope: input.runtimeLocalScope,
-          }),
-      },
-      metadata,
-    }),
-    "executor.sources.update": toTool({
-      tool: {
-        description: "Update a source definition in the current workspace.",
-        inputSchema: updateSourceInputSchema,
-        outputSchema: sourceOutputSchema,
-        execute: (payload: {
-          sourceId: string;
-          payload: Record<string, unknown>;
-        }) =>
-          runRuntimeEffect({
-            effect: updateSource({
-              scopeId: input.scopeId,
-              sourceId: payload.sourceId as never,
-              actorScopeId: input.actorScopeId as never,
-              payload: payload.payload as never,
             }),
             runtimeLayer,
             runtimeLocalScope: input.runtimeLocalScope,
@@ -671,22 +637,6 @@ export const createExecutorAdminToolMap = (input: {
         outputSchema: sourceOutputSchema,
         execute: ({ sourceId }: { sourceId: string }) =>
           input.executor.sources.get(sourceId as never),
-      },
-      metadata,
-    }),
-    "executor.sources.update": toTool({
-      tool: {
-        description: "Update a source definition in the current workspace.",
-        inputSchema: updateSourceInputSchema,
-        outputSchema: sourceOutputSchema,
-        execute: (payload: {
-          sourceId: string;
-          payload: Record<string, unknown>;
-        }) =>
-          input.executor.sources.update(
-            payload.sourceId as never,
-            payload.payload as never,
-          ),
       },
       metadata,
     }),

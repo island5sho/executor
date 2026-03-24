@@ -2,10 +2,6 @@ import {
   Schema,
 } from "effect";
 
-import {
-  JsonObjectSchema,
-} from "@executor/source-core";
-
 export const LocalExecutorRuntimeSchema = Schema.Literal(
   "quickjs",
   "ses",
@@ -62,7 +58,6 @@ export const LocalConfigSecretInputSchema = Schema.Union(
 
 export const LocalConfigSourceConnectionSchema = Schema.Struct({
   endpoint: Schema.String,
-  auth: Schema.optional(LocalConfigSecretInputSchema),
 });
 
 const LocalConfigSourceEntryBaseSchema = Schema.Struct({
@@ -76,7 +71,6 @@ export const LocalConfigSourceSchema = Schema.extend(
   LocalConfigSourceEntryBaseSchema,
   Schema.Struct({
     kind: Schema.String,
-    binding: JsonObjectSchema,
   }),
 );
 

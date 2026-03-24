@@ -120,19 +120,17 @@ export const interactionForEffect = (
 });
 
 export const createCatalogImportMetadata = (input: {
-  source: Pick<Source, "kind" | "endpoint" | "sourceHash" | "binding" | "auth">;
-  adapterKey: string;
+  source: Pick<Source, "kind" | "endpoint" | "sourceHash">;
+  pluginKey: string;
 }): ImportMetadata => ({
   sourceKind: sourceKindFromSource(input.source),
-  adapterKey: input.adapterKey,
+  pluginKey: input.pluginKey,
   importerVersion: "ir.v1.snapshot_builder",
   importedAt: new Date().toISOString(),
   sourceConfigHash:
     input.source.sourceHash ??
     stableHash({
       endpoint: input.source.endpoint,
-      binding: input.source.binding,
-      auth: input.source.auth?.kind ?? null,
     }),
 });
 

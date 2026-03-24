@@ -845,7 +845,7 @@ const searchDoc = (
     capability.executableIds
       .map((executableId: ExecutableId) =>
         catalog.executables[executableId]?.display?.protocol
-        ?? catalog.executables[executableId]?.adapterKey
+        ?? catalog.executables[executableId]?.pluginKey
       )
       .filter((protocol): protocol is string => protocol !== undefined),
   ),

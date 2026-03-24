@@ -38,6 +38,7 @@
     "@effect/platform-node": "catalog:",
     "@executor/codemode-core": "workspace:*",
     "@executor/executor-mcp": "workspace:*",
+    "@executor/plugin-openapi-sdk": "workspace:*",
     "@executor/platform-api": "workspace:*",
     "@executor/platform-internal": "workspace:*",
     "@executor/platform-sdk": "workspace:*",

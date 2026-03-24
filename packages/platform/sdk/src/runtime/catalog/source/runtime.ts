@@ -597,11 +597,11 @@ const codemodeDescriptorFromCapability = (input: {
       ...(inputSchema !== undefined ? { inputSchema } : {}),
       ...(outputSchema !== undefined ? { outputSchema } : {}),
     },
-    providerKind: input.executable.adapterKey,
-    providerData: {
+    pluginKind: input.executable.pluginKey,
+    pluginData: {
       capabilityId: input.capability.id,
       executableId: input.executable.id,
-      adapterKey: input.executable.adapterKey,
+      pluginKey: input.executable.pluginKey,
       display: input.executable.display,
     },
   };
@@ -679,8 +679,6 @@ const sourceRecordFromCatalogArtifact = (input: {
   status: input.source.status,
   enabled: input.source.enabled,
   namespace: input.source.namespace,
-  importAuthPolicy: input.source.importAuthPolicy,
-  bindingConfigJson: JSON.stringify(input.source.binding),
   sourceHash: input.source.sourceHash,
   lastError: input.source.lastError,
   createdAt: input.source.createdAt,

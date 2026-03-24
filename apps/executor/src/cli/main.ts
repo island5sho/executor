@@ -14,11 +14,13 @@ import {
   type ExecutorApiEffectClient as ExecutorApiClient,
 } from "@executor/platform-api/effect";
 import { runExecutorMcpStdioServer } from "@executor/executor-mcp";
+import {
+  openApiSdkPlugin,
+} from "@executor/plugin-openapi-sdk";
 import { createWorkspaceExecutorAdminToolMap } from "@executor/platform-internal";
 import {
   EXECUTOR_SOURCES_ADD_HELP_LINES,
   RuntimeExecutionResolverService,
-  hasRegisteredExecutorAddableSourceAdapters,
 } from "@executor/platform-sdk/runtime";
 import {
   createExecutorEffect,
@@ -38,6 +40,7 @@ import * as Option from "effect/Option";
 import * as Cause from "effect/Cause";
 
 import {
+  createFileOpenApiSourceStorage,
   createLocalExecutorServer,
   DEFAULT_SERVER_BASE_URL,
   DEFAULT_SERVER_HOST,
@@ -71,7 +74,6 @@ import {
 
 const toError = (cause: unknown): Error =>
   cause instanceof Error ? cause : new Error(String(cause));
-
 const sleep = (ms: number) =>
   Effect.promise(() => new Promise<void>((resolve) => setTimeout(resolve, ms)));
 
@@ -214,16 +216,9 @@ const buildWorkflowText = (namespaces: readonly string[] = []): string =>
     '1) const matches = await tools.discover({ query: "<intent>", limit: 12 });',
     "2) const details = await tools.describe.tool({ path, includeSchemas: true });",
     "3) Call selected tools.<path>(input).",
-    ...(hasRegisteredExecutorAddableSourceAdapters
-      ? [
-          "4) To connect a source plugin, call tools.executor.sources.add(...).",
-          ...EXECUTOR_SOURCES_ADD_HELP_LINES,
-          "5) If execution pauses for interaction, resume it with `executor resume --execution-id ...`.",
-        ]
-      : [
-          "4) Source plugins are not registered in this build.",
-          "5) If execution pauses for interaction, resume it with `executor resume --execution-id ...`.",
-        ]),
+    "4) Source plugins are not registered in this build.",
+    ...EXECUTOR_SOURCES_ADD_HELP_LINES,
+    "5) If execution pauses for interaction, resume it with `executor resume --execution-id ...`.",
     "Do not use fetch; use tools.* only.",
   ].join("\n");
 
@@ -293,6 +288,13 @@ const loadRunWorkflowText = (): Effect.Effect<string, Error, never> =>
       backend: createLocalExecutorBackend({
         localDataDir: DEFAULT_LOCAL_DATA_DIR,
       }),
+      plugins: [
+        openApiSdkPlugin({
+          storage: createFileOpenApiSourceStorage({
+            rootDir: `${DEFAULT_LOCAL_DATA_DIR}/plugins/openapi/sources`,
+          }),
+        }),
+      ] as const,
       createInternalToolMap: createWorkspaceExecutorAdminToolMap,
     }).pipe(Effect.mapError(toError)),
     (executor) =>
@@ -420,7 +422,6 @@ const getLocalAuthedClient = (baseUrl: string = DEFAULT_SERVER_BASE_URL) =>
     const installation = yield* bootstrapClient.local.installation({});
     const client = yield* createExecutorApiClient({
       baseUrl,
-      accountId: installation.actorScopeId,
     });
 
     return {

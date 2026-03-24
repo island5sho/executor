@@ -111,12 +111,6 @@ const interactionPurposeFromInput = (input: Parameters<OnElicitation>[0]): strin
     return explicitPurpose;
   }
 
-  if (input.path === "executor.sources.add") {
-    return input.elicitation.mode === "url"
-      ? "source_connect_oauth2"
-      : "source_connect_secret";
-  }
-
   return "elicitation";
 };
 

@@ -8,6 +8,10 @@ import { dirname, extname, resolve } from "node:path";
 import { Readable } from "node:stream";
 import { FileSystem, HttpApiBuilder, HttpServer } from "@effect/platform";
 import { NodeFileSystem } from "@effect/platform-node";
+import { openApiHttpPlugin } from "@executor/plugin-openapi-http";
+import {
+  openApiSdkPlugin,
+} from "@executor/plugin-openapi-sdk";
 import {
   createExecutorApiLayer,
 } from "@executor/platform-api/http";
@@ -44,6 +48,9 @@ import {
   tracingSearchUrl,
 } from "./tracing";
 import { platformServerEffectError } from "./effect-errors";
+import { createFileOpenApiSourceStorage } from "./openapi-source-storage";
+
+export { createFileOpenApiSourceStorage } from "./openapi-source-storage";
 
 export {
   DEFAULT_EXECUTOR_DATA_DIR,
@@ -107,6 +114,7 @@ type ExecutorMcpHandler = ReturnType<typeof createExecutorMcpRequestHandler>;
 const EXECUTOR_NPM_DIST_TAGS_PATHNAME = "/v1/app/npm/dist-tags";
 const EXECUTOR_NPM_DIST_TAGS_URL =
   "https://registry.npmjs.org/-/package/executor/dist-tags";
+const executorHttpPlugins = [openApiHttpPlugin()] as const;
 
 const disposeExecutor = (executor: Executor) =>
   Effect.tryPromise({
@@ -125,6 +133,13 @@ const createExecutorRuntime = (
       workspaceRoot: options.workspaceRoot,
       localDataDir,
     }),
+    plugins: [
+      openApiSdkPlugin({
+        storage: createFileOpenApiSourceStorage({
+          rootDir: resolve(localDataDir, "plugins", "openapi", "sources"),
+        }),
+      }),
+    ] as const,
     executionResolver: options.executionResolver,
     createInternalToolMap: createWorkspaceExecutorAdminToolMap,
     resolveSecretMaterial: options.resolveSecretMaterial,
@@ -140,20 +155,21 @@ const createExecutorApiWebHandler = (
   tracingRuntime: ReturnType<typeof createLocalTracingRuntimeFromEnv>,
 ) =>
   Effect.acquireRelease(
-    Effect.sync(() =>
-      HttpApiBuilder.toWebHandler(
-        Layer.merge(
-          HttpApiBuilder.middlewareOpenApi({ path: "/v1/openapi.json" }).pipe(
-            Layer.provideMerge(
-              createExecutorApiLayer(executor).pipe(
-                Layer.provideMerge(tracingRuntime?.layer ?? Layer.empty),
-              ),
-            )
+    Effect.sync(() => {
+      const apiLayer: any = HttpApiBuilder.middlewareOpenApi({
+        path: "/v1/openapi.json",
+      }).pipe(
+        Layer.provideMerge(
+          createExecutorApiLayer(executor, {
+            plugins: executorHttpPlugins,
+          }).pipe(
+            Layer.provideMerge(tracingRuntime?.layer ?? Layer.empty),
           ),
-          HttpServer.layerContext,
         ),
-      ),
-    ),
+      );
+      const webLayer: any = Layer.merge(apiLayer, HttpServer.layerContext);
+      return HttpApiBuilder.toWebHandler(webLayer);
+    }),
     (handler: ExecutorApiWebHandler) => Effect.tryPromise({ try: () => handler.dispose(), catch: (cause) => cause instanceof Error ? cause : new Error(String(cause ?? "web handler dispose failed")) }).pipe(Effect.orDie),
   );
 

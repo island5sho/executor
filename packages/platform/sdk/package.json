@@ -10,6 +10,7 @@
     "./executor": "./src/executor.ts",
     "./errors": "./src/errors.ts",
     "./operations": "./src/operations.ts",
+    "./plugins": "./src/plugins.ts",
     "./string-schemas": "./src/string-schemas.ts",
     "./schema": "./src/schema/index.ts",
     "./runtime": "./src/runtime/index.ts"
@@ -34,7 +35,6 @@
     "@executor/runtime-quickjs": "workspace:*",
     "@executor/runtime-ses": "workspace:*",
     "@executor/source-core": "workspace:*",
-    "@executor/source-builtins": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

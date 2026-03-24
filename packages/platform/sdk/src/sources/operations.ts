@@ -1,7 +1,3 @@
-import type {
-  CreateSourcePayload,
-  UpdateSourcePayload,
-} from "./contracts";
 import {
   type ScopeId,
   SourceIdSchema,
@@ -12,12 +8,9 @@ import * as Either from "effect/Either";
 import * as Effect from "effect/Effect";
 
 import {
-  createSourceFromPayload,
-  updateSourceFromPayload,
+  normalizeSourceForCreate,
+  normalizeSourceForSave,
 } from "../runtime/sources/source-definitions";
-import {
-  getSourceAdapterForSource,
-} from "../runtime/sources/source-adapters";
 import {
   mapPersistenceError,
 } from "../runtime/policy/operations-shared";
@@ -43,9 +36,6 @@ const sourceOps = {
   remove: operationErrors("sources.remove"),
 } as const;
 
-const shouldAutoProbeSource = (source: Source): boolean =>
-  getSourceAdapterForSource(source).shouldAutoProbe(source);
-
 const syncArtifactsForSource = (input: {
   store: ExecutorStateStoreShape;
   sourceStore: Effect.Effect.Success<typeof RuntimeSourceStoreService>;
@@ -56,57 +46,21 @@ const syncArtifactsForSource = (input: {
   Effect.gen(function* () {
     const catalogSyncService = yield* RuntimeSourceCatalogSyncService;
 
-    // For HTTP-backed source kinds that can validate themselves from a remote
-    // document, automatically attempt to probe and connect. This mirrors the
-    // addExecutorSource flow by overriding status to "connected" so the sync
-    // guard passes.
-    const autoProbe = shouldAutoProbeSource(input.source);
-    const sourceForSync = autoProbe
-      ? { ...input.source, status: "connected" as const }
-      : input.source;
-
     const synced = yield* Effect.either(
       catalogSyncService.sync({
-        source: sourceForSync,
+        source: input.source,
         actorScopeId: input.actorScopeId,
       }),
     );
 
     return yield* Either.match(synced, {
-      onRight: () =>
-        Effect.gen(function* () {
-          if (autoProbe) {
-            const connectedSource = yield* updateSourceFromPayload({
-              source: input.source,
-              payload: { status: "connected", lastError: null },
-              now: Date.now(),
-            }).pipe(
-              Effect.mapError((cause) =>
-                input.operation.badRequest(
-                  "Failed updating source status",
-                  cause instanceof Error ? cause.message : String(cause),
-                ),
-              ),
-            );
-            yield* mapPersistenceError(
-              input.operation.child("source_connected"),
-              input.sourceStore.persistSource(connectedSource, {
-                actorScopeId: input.actorScopeId,
-              }),
-            );
-            return connectedSource;
-          }
-          return input.source;
-        }),
+      onRight: () => Effect.succeed(input.source),
       onLeft: (error) =>
         Effect.gen(function* () {
-          if (
-            autoProbe ||
-            (input.source.enabled && input.source.status === "connected")
-          ) {
-            const erroredSource = yield* updateSourceFromPayload({
-              source: input.source,
-              payload: {
+          if (input.source.enabled && input.source.status === "connected") {
+            const erroredSource = yield* normalizeSourceForSave({
+              source: {
+                ...input.source,
                 status: "error",
                 lastError: error.message,
               },
@@ -144,35 +98,36 @@ export const listSources = (input: {
     Effect.gen(function* () {
       const sourceStore = yield* RuntimeSourceStoreService;
 
-      return yield* sourceStore
-        .loadSourcesInScope(input.scopeId, {
-          actorScopeId: input.actorScopeId,
-        })
-        .pipe(
-          Effect.mapError((error) =>
-            sourceOps.list.unknownStorage(
-              error,
-              "Failed projecting stored sources",
-            ),
+      return yield* sourceStore.loadSourcesInScope(input.scopeId, {
+        actorScopeId: input.actorScopeId,
+      }).pipe(
+        Effect.mapError((error) =>
+          sourceOps.list.unknownStorage(
+            error,
+            "Failed projecting stored sources",
           ),
-        );
+        ),
+      );
     }),
   );
 
-export const createSource = (input: {
+export const createManagedSource = (input: {
   scopeId: ScopeId;
   actorScopeId: ScopeId;
-  payload: CreateSourcePayload;
+  source: Omit<
+    Source,
+    "id" | "scopeId" | "createdAt" | "updatedAt"
+  >;
 }) =>
   Effect.flatMap(ExecutorStateStore, (store) =>
     Effect.gen(function* () {
       const sourceStore = yield* RuntimeSourceStoreService;
       const now = Date.now();
 
-      const source = yield* createSourceFromPayload({
+      const source = yield* normalizeSourceForCreate({
         scopeId: input.scopeId,
         sourceId: SourceIdSchema.make(`src_${crypto.randomUUID()}`),
-        payload: input.payload,
+        source: input.source,
         now,
       }).pipe(
         Effect.mapError((cause) =>
@@ -211,62 +166,36 @@ export const getSource = (input: {
     Effect.gen(function* () {
       const sourceStore = yield* RuntimeSourceStoreService;
 
-      return yield* sourceStore
-        .loadSourceById({
-          scopeId: input.scopeId,
-          sourceId: input.sourceId,
-          actorScopeId: input.actorScopeId,
-        })
-        .pipe(
-          Effect.mapError((cause) =>
-            cause instanceof Error &&
-            cause.message.startsWith("Source not found:")
-              ? sourceOps.get.notFound(
-                  "Source not found",
-                  `scopeId=${input.scopeId} sourceId=${input.sourceId}`,
-                )
-              : sourceOps.get.unknownStorage(
-                  cause,
-                  "Failed projecting stored source",
-                ),
-          ),
-        );
+      return yield* sourceStore.loadSourceById({
+        scopeId: input.scopeId,
+        sourceId: input.sourceId,
+        actorScopeId: input.actorScopeId,
+      }).pipe(
+        Effect.mapError((cause) =>
+          cause instanceof Error &&
+          cause.message.startsWith("Source not found:")
+            ? sourceOps.get.notFound(
+                "Source not found",
+                `scopeId=${input.scopeId} sourceId=${input.sourceId}`,
+              )
+            : sourceOps.get.unknownStorage(
+                cause,
+                "Failed projecting stored source",
+              ),
+        ),
+      );
     }),
   );
 
-export const updateSource = (input: {
-  scopeId: ScopeId;
-  sourceId: SourceId;
+export const saveManagedSource = (input: {
   actorScopeId: ScopeId;
-  payload: UpdateSourcePayload;
+  source: Source;
 }) =>
   Effect.flatMap(ExecutorStateStore, (store) =>
     Effect.gen(function* () {
       const sourceStore = yield* RuntimeSourceStoreService;
-      const existingSource = yield* sourceStore
-        .loadSourceById({
-          scopeId: input.scopeId,
-          sourceId: input.sourceId,
-          actorScopeId: input.actorScopeId,
-        })
-        .pipe(
-          Effect.mapError((cause) =>
-            cause instanceof Error &&
-            cause.message.startsWith("Source not found:")
-              ? sourceOps.update.notFound(
-                  "Source not found",
-                  `scopeId=${input.scopeId} sourceId=${input.sourceId}`,
-                )
-              : sourceOps.update.unknownStorage(
-                  cause,
-                  "Failed projecting stored source",
-                ),
-          ),
-        );
-
-      const updatedSource = yield* updateSourceFromPayload({
-        source: existingSource,
-        payload: input.payload,
+      const updatedSource = yield* normalizeSourceForSave({
+        source: input.source,
         now: Date.now(),
       }).pipe(
         Effect.mapError((cause) =>

@@ -12,20 +12,18 @@ import "./globals.css";
 
 import { AppShell } from "./components/shell";
 import { HomePage } from "./views/home";
-import { EditSourcePage, NewSourcePage } from "./views/source-editor";
-import { SourceDetailPage } from "./views/source-detail";
 import { SecretsPage } from "./views/secrets";
-import { AddSourcePage } from "./views/add-source";
+import {
+  SourcePluginAddPage,
+  SourcePluginCreatePage,
+  SourcePluginDetailPage,
+  SourcePluginEditPage,
+  type SourcePluginRouteSearch,
+} from "./source-plugins/pages";
 
 // ---------------------------------------------------------------------------
 // Route search schema
 // ---------------------------------------------------------------------------
-
-type SourceRouteSearch = {
-  tab: "model" | "discover";
-  tool?: string;
-  query?: string;
-};
 
 const sourceTabs = ["model", "discover"] as const;
 
@@ -46,22 +44,22 @@ const homeRoute = createRoute({
 const newSourceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sources/new",
-  component: NewSourcePage,
+  component: SourcePluginCreatePage,
 });
 
 const addSourceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sources/add",
-  component: AddSourcePage,
+  component: SourcePluginAddPage,
 });
 
 const sourceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/sources/$sourceId",
-  validateSearch: (search: Record<string, unknown>): SourceRouteSearch => ({
+  validateSearch: (search: Record<string, unknown>): SourcePluginRouteSearch => ({
     tab:
-      typeof search.tab === "string" && sourceTabs.includes(search.tab as SourceRouteSearch["tab"])
-        ? (search.tab as SourceRouteSearch["tab"])
+      typeof search.tab === "string" && sourceTabs.includes(search.tab as SourcePluginRouteSearch["tab"])
+        ? (search.tab as SourcePluginRouteSearch["tab"])
         : "model",
     tool: typeof search.tool === "string" && search.tool.length > 0 ? search.tool : undefined,
     query: typeof search.query === "string" ? search.query : undefined,
@@ -88,7 +86,7 @@ function SourceDetailPageWrapper() {
   const navigate = useNavigate({ from: sourceRoute.fullPath });
 
   return (
-    <SourceDetailPage
+    <SourcePluginDetailPage
       sourceId={sourceId}
       search={search}
       navigate={navigate as any}
@@ -98,7 +96,7 @@ function SourceDetailPageWrapper() {
 
 function EditSourcePageWrapper() {
   const { sourceId } = editSourceRoute.useParams();
-  return <EditSourcePage sourceId={sourceId} />;
+  return <SourcePluginEditPage sourceId={sourceId} />;
 }
 
 // ---------------------------------------------------------------------------

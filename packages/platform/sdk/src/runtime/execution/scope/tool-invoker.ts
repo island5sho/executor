@@ -15,9 +15,6 @@ import type {
 import * as Effect from "effect/Effect";
 
 import {
-  RuntimeSourceAuthMaterialService,
-} from "../../auth/source-auth-material";
-import {
   RuntimeSourceCatalogStoreService,
 } from "../../catalog/source/runtime";
 import type {
@@ -42,9 +39,6 @@ import type {
 import type {
   ExecutorStateStoreShape,
 } from "../../executor-state-store";
-import {
-  RuntimeSourceAuthService,
-} from "../../sources/source-auth-service";
 import {
   type RuntimeSourceStore,
 } from "../../sources/source-store";
@@ -80,7 +74,6 @@ export type ScopeInternalToolContext = {
   sourceCatalogSyncService: Effect.Effect.Success<
     typeof RuntimeSourceCatalogSyncService
   >;
-  sourceAuthService: RuntimeSourceAuthService;
   installationStore: InstallationStoreShape;
   instanceConfigResolver: ResolveInstanceConfig;
   storeSecretMaterial: StoreSecretMaterial;
@@ -115,10 +108,6 @@ export const createScopeToolInvoker = (input: {
   scopeConfigStore: ScopeConfigStoreShape;
   scopeStateStore: ScopeStateStoreShape;
   sourceArtifactStore: SourceArtifactStoreShape;
-  sourceAuthMaterialService: Effect.Effect.Success<
-    typeof RuntimeSourceAuthMaterialService
-  >;
-  sourceAuthService: RuntimeSourceAuthService;
   runtimeLocalScope: RuntimeLocalScopeState | null;
   localToolRuntime: LocalToolRuntime;
   createInternalToolMap?: CreateScopeInternalToolMap;
@@ -140,7 +129,6 @@ export const createScopeToolInvoker = (input: {
   const executorTools = createExecutorToolMap({
     scopeId: input.scopeId,
     actorScopeId: input.actorScopeId,
-    sourceAuthService: input.sourceAuthService,
     installationStore: input.installationStore,
     scopeConfigStore: input.scopeConfigStore,
     scopeStateStore: input.scopeStateStore,
@@ -154,7 +142,6 @@ export const createScopeToolInvoker = (input: {
       executorStateStore: input.executorStateStore,
       sourceStore: input.sourceStore,
       sourceCatalogSyncService: input.sourceCatalogSyncService,
-      sourceAuthService: input.sourceAuthService,
       installationStore: input.installationStore,
       instanceConfigResolver: input.instanceConfigResolver,
       storeSecretMaterial: input.storeSecretMaterial,
@@ -232,16 +219,10 @@ export const createScopeToolInvoker = (input: {
             onElicitation: input.onElicitation,
           });
 
-          const auth = yield* input.sourceAuthMaterialService.resolve({
-            source: catalogTool.source,
-            actorScopeId: input.actorScopeId,
-            context: toSecretResolutionContext(invocation.context),
-          });
           return yield* invokeIrTool({
             scopeId: input.scopeId,
             actorScopeId: input.actorScopeId,
             tool: catalogTool,
-            auth,
             args: invocation.args,
             onElicitation: input.onElicitation,
             context: invocation.context,
@@ -254,13 +235,13 @@ export const createScopeToolInvoker = (input: {
   return {
     catalog,
     toolInvoker: {
-      invoke: ({ path, args, context }) =>
-        provideRuntimeLocalScope(
-          authoredToolPaths.has(path)
-            ? authoredInvoker.invoke({ path, args, context })
-            : invokePersistedTool({ path, args, context }),
-          input.runtimeLocalScope,
-        ),
+      invoke: ({ path, args, context }) => {
+        const effect: Effect.Effect<unknown, unknown, never> = authoredToolPaths.has(path)
+          ? authoredInvoker.invoke({ path, args, context }) as Effect.Effect<unknown, unknown, never>
+          : invokePersistedTool({ path, args, context });
+
+        return provideRuntimeLocalScope(effect, input.runtimeLocalScope);
+      },
     },
   };
 };

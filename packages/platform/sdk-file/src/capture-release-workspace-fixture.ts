@@ -188,10 +188,9 @@ const copyRecursive = (
 const sanitizeSourceConfig = (
   sourceConfig: NonNullable<LocalExecutorConfig["sources"]>[string],
 ): NonNullable<LocalExecutorConfig["sources"]>[string] => {
-  const { auth: _ignoredAuth, ...connection } = sourceConfig.connection;
   return {
     ...sourceConfig,
-    connection,
+    connection: sourceConfig.connection,
   };
 };
 

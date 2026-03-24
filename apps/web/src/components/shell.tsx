@@ -257,7 +257,11 @@ export function AppShell() {
           </div>
           <LoadableBlock loadable={sources} loading="Loading...">
             {(items) =>
-              items.length === 0 ? (
+              !Array.isArray(items) ? (
+                <div className="px-2.5 py-2 text-[11px] leading-relaxed text-destructive">
+                  Sources returned an unexpected payload.
+                </div>
+              ) : items.length === 0 ? (
                 <div className="px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground/40">
                   No sources yet
                 </div>

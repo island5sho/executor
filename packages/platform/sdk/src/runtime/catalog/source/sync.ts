@@ -21,14 +21,8 @@ import {
   type LocalScopeState,
 } from "../../scope-state";
 import {
-  RuntimeSourceAuthMaterialService,
-} from "../../auth/source-auth-material";
-import {
-  getSourceAdapterForSource,
-} from "../../sources/source-adapters";
-import {
-  SecretMaterialResolverService,
-} from "../../scope/secret-material-providers";
+  getSourcePluginForSource,
+} from "../../sources/source-plugins";
 import {
   snapshotFromSourceCatalogSyncResult,
 } from "@executor/source-core";
@@ -43,24 +37,20 @@ import {
 const shouldIndexSource = (source: Source): boolean =>
   source.enabled
   && source.status === "connected"
-  && getSourceAdapterForSource(source).catalogKind !== "internal";
+  && getSourcePluginForSource(source).catalogKind !== "internal";
 
 type RuntimeSourceCatalogSyncDeps = {
   runtimeLocalScope: RuntimeLocalScopeState;
   scopeStateStore: ScopeStateStoreShape;
   sourceArtifactStore: SourceArtifactStoreShape;
   sourceTypeDeclarationsRefresher: SourceTypeDeclarationsRefresherShape;
-  resolveSecretMaterial: Effect.Effect.Success<typeof SecretMaterialResolverService>;
-  sourceAuthMaterialService: Effect.Effect.Success<typeof RuntimeSourceAuthMaterialService>;
 };
 
 type SourceCatalogSyncServices =
   | RuntimeLocalScopeService
   | ScopeStateStore
   | SourceArtifactStore
-  | SourceTypeDeclarationsRefresherService
-  | RuntimeSourceAuthMaterialService
-  | SecretMaterialResolverService;
+  | SourceTypeDeclarationsRefresherService;
 
 export type RuntimeSourceCatalogSyncShape = {
   sync: (input: {
@@ -123,23 +113,16 @@ const syncSourceCatalogWithDeps = (
       return;
     }
 
-    const adapter = getSourceAdapterForSource(input.source);
-    const syncResult = yield* adapter.syncCatalog({
+    const definition = getSourcePluginForSource(input.source);
+    const irModel = yield* definition.getIrModel({
       source: input.source,
-      resolveSecretMaterial: deps.resolveSecretMaterial,
-      resolveAuthMaterialForSlot: (slot) =>
-        deps.sourceAuthMaterialService.resolve({
-          source: input.source,
-          slot,
-          actorScopeId: input.actorScopeId,
-        }),
     });
-    const snapshot = snapshotFromSourceCatalogSyncResult(syncResult);
+    const snapshot = snapshotFromSourceCatalogSyncResult(irModel);
     yield* deps.sourceArtifactStore.write({
       sourceId: input.source.id,
       artifact: deps.sourceArtifactStore.build({
         source: input.source,
-        syncResult,
+        syncResult: irModel,
       }),
     });
 
@@ -152,7 +135,7 @@ const syncSourceCatalogWithDeps = (
         [input.source.id]: {
           status: "connected",
           lastError: null,
-          sourceHash: syncResult.sourceHash,
+          sourceHash: irModel.sourceHash,
           createdAt: existingSourceState?.createdAt ?? input.source.createdAt,
           updatedAt: Date.now(),
         },
@@ -187,17 +170,12 @@ export const syncSourceCatalog = (input: {
     const sourceArtifactStore = yield* SourceArtifactStore;
     const sourceTypeDeclarationsRefresher =
       yield* SourceTypeDeclarationsRefresherService;
-    const resolveSecretMaterial = yield* SecretMaterialResolverService;
-    const sourceAuthMaterialService = yield* RuntimeSourceAuthMaterialService;
-
     return yield* syncSourceCatalogWithDeps(
       {
         runtimeLocalScope,
         scopeStateStore,
         sourceArtifactStore,
         sourceTypeDeclarationsRefresher,
-        resolveSecretMaterial,
-        sourceAuthMaterialService,
       },
       {
         source: input.source,
@@ -214,16 +192,11 @@ export const RuntimeSourceCatalogSyncLive = Layer.effect(
     const sourceArtifactStore = yield* SourceArtifactStore;
     const sourceTypeDeclarationsRefresher =
       yield* SourceTypeDeclarationsRefresherService;
-    const resolveSecretMaterial = yield* SecretMaterialResolverService;
-    const sourceAuthMaterialService = yield* RuntimeSourceAuthMaterialService;
-
     const deps: RuntimeSourceCatalogSyncDeps = {
       runtimeLocalScope,
       scopeStateStore,
       sourceArtifactStore,
       sourceTypeDeclarationsRefresher,
-      resolveSecretMaterial,
-      sourceAuthMaterialService,
     };
 
     return RuntimeSourceCatalogSyncService.of({

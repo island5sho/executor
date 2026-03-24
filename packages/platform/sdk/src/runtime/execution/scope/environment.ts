@@ -18,14 +18,8 @@ import {
   createScopeToolInvoker,
 } from "./tool-invoker";
 import {
-  RuntimeSourceAuthServiceTag,
-} from "../../sources/source-auth-service";
-import {
   RuntimeSourceCatalogStoreService,
 } from "../../catalog/source/runtime";
-import {
-  RuntimeSourceAuthMaterialService,
-} from "../../auth/source-auth-material";
 import {
   RuntimeSourceCatalogSyncService,
 } from "../../catalog/source/sync";
@@ -81,12 +75,6 @@ export const createScopeExecutionEnvironmentResolver =
     sourceCatalogSyncService: Effect.Effect.Success<
       typeof RuntimeSourceCatalogSyncService
     >;
-    sourceAuthMaterialService: Effect.Effect.Success<
-      typeof RuntimeSourceAuthMaterialService
-    >;
-    sourceAuthService: Effect.Effect.Success<
-      typeof RuntimeSourceAuthServiceTag
-    >;
     sourceCatalogStore: Effect.Effect.Success<
       typeof RuntimeSourceCatalogStoreService
     >;
@@ -127,8 +115,6 @@ export const createScopeExecutionEnvironmentResolver =
         scopeConfigStore: input.scopeConfigStore,
         scopeStateStore: input.scopeStateStore,
         sourceArtifactStore: input.sourceArtifactStore,
-        sourceAuthMaterialService: input.sourceAuthMaterialService,
-        sourceAuthService: input.sourceAuthService,
         runtimeLocalScope,
         localToolRuntime,
         createInternalToolMap: input.createInternalToolMap,
@@ -168,9 +154,6 @@ export const RuntimeExecutionResolverLive = (
           const sourceStore = yield* RuntimeSourceStoreService;
           const sourceCatalogSyncService =
             yield* RuntimeSourceCatalogSyncService;
-          const sourceAuthMaterialService =
-            yield* RuntimeSourceAuthMaterialService;
-          const sourceAuthService = yield* RuntimeSourceAuthServiceTag;
           const sourceCatalogStore = yield* RuntimeSourceCatalogStoreService;
           const localToolRuntimeLoader = yield* LocalToolRuntimeLoaderService;
           const installationStore = yield* InstallationStore;
@@ -186,8 +169,6 @@ export const RuntimeExecutionResolverLive = (
             executorStateStore,
             sourceStore,
             sourceCatalogSyncService,
-            sourceAuthService,
-            sourceAuthMaterialService,
             sourceCatalogStore,
             localToolRuntimeLoader,
             installationStore,

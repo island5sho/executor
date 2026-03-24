@@ -4,12 +4,10 @@ import type {
   ScopeId,
   Execution,
   ExecutionEnvelope,
-  ExecutionInteraction,
   LocalInstallation,
   LocalScopePolicy,
   Source,
 } from "./schema";
-import { ExecutionIdSchema } from "./schema";
 import type {
   CreateExecutionPayload,
   ResumeExecutionPayload,
@@ -24,10 +22,7 @@ import type {
   UpdateSecretResult,
 } from "./local/contracts";
 import {
-  completeSourceCredentialSetup,
   getLocalInstallation,
-  getSourceCredentialInteraction,
-  submitSourceCredentialInteraction,
 } from "./local/operations";
 import {
   createLocalSecret,
@@ -47,21 +42,17 @@ import {
   removePolicy,
   updatePolicy,
 } from "./policies/operations";
-import type {
-  CreateSourcePayload,
-  UpdateSourcePayload,
-} from "./sources/contracts";
 import {
   discoverSourceInspectionTools,
   getSourceInspection,
   getSourceInspectionToolDetail,
 } from "./sources/inspection";
 import {
-  createSource,
+  createManagedSource,
   getSource,
   listSources,
   removeSource,
-  updateSource,
+  saveManagedSource,
 } from "./sources/operations";
 import type { ExecutorBackend } from "./backend";
 import {
@@ -71,7 +62,6 @@ import {
   type ExecutorRuntimeOptions,
   type ResolveExecutionEnvironment,
   type ResolveSecretMaterial,
-  RuntimeSourceAuthServiceTag,
 } from "./runtime";
 import {
   createExecution,
@@ -79,14 +69,14 @@ import {
   resumeExecution,
 } from "./runtime/execution/service";
 import type {
-  CompleteSourceCredentialSetupResult,
-  ExecutorAddSourceInput,
-  ExecutorSourceAddResult,
-} from "./runtime/sources/source-auth-service";
+  ExecutorSdkPluginHost,
+  ExecutorSdkPlugin,
+  ExecutorSdkPluginExtensions,
+} from "./plugins";
+import {
+  configureExecutorSourcePlugins,
+} from "./runtime/sources/source-plugins";
 
-type DistributiveOmit<T, Keys extends PropertyKey> = T extends unknown
-  ? Omit<T, Keys>
-  : never;
 type ProvidedEffect<T extends Effect.Effect<any, any, any>> = Effect.Effect<
   Effect.Effect.Success<T>,
   Effect.Effect.Error<T>,
@@ -96,11 +86,6 @@ type MappedProvidedEffect<
   T extends Effect.Effect<any, any, any>,
   A,
 > = Effect.Effect<A, Effect.Effect.Error<T>, never>;
-
-export type ExecutorSourceInput = DistributiveOmit<
-  ExecutorAddSourceInput,
-  "scopeId" | "actorScopeId" | "executionId" | "interactionId"
->;
 
 export type ExecutorEffect = {
   runtime: ExecutorRuntime;
@@ -112,30 +97,6 @@ export type ExecutorEffect = {
   local: {
     installation: () => ProvidedEffect<ReturnType<typeof getLocalInstallation>>;
     config: () => ProvidedEffect<ReturnType<typeof getLocalInstanceConfig>>;
-    credentials: {
-      get: (input: {
-        sourceId: Source["id"];
-        interactionId: ExecutionInteraction["id"];
-      }) => ProvidedEffect<ReturnType<typeof getSourceCredentialInteraction>>;
-      submit: (input: {
-        sourceId: Source["id"];
-        interactionId: ExecutionInteraction["id"];
-        action: "submit" | "continue" | "cancel";
-        token?: string | null;
-      }) => ProvidedEffect<
-        ReturnType<typeof submitSourceCredentialInteraction>
-      >;
-      complete: (input: {
-        sourceId: Source["id"];
-        state: string;
-        code?: string | null;
-        error?: string | null;
-        errorDescription?: string | null;
-      }) => MappedProvidedEffect<
-        ReturnType<typeof completeSourceCredentialSetup>,
-        CompleteSourceCredentialSetupResult
-      >;
-    };
   };
   secrets: {
     list: () => ProvidedEffect<ReturnType<typeof listLocalSecrets>>;
@@ -168,21 +129,8 @@ export type ExecutorEffect = {
     ) => MappedProvidedEffect<ReturnType<typeof removePolicy>, boolean>;
   };
   sources: {
-    add: (
-      input: ExecutorSourceInput,
-      options?: {
-        baseUrl?: string | null;
-      },
-    ) => Effect.Effect<ExecutorSourceAddResult, Error, never>;
     list: () => ProvidedEffect<ReturnType<typeof listSources>>;
-    create: (
-      payload: CreateSourcePayload,
-    ) => ProvidedEffect<ReturnType<typeof createSource>>;
     get: (sourceId: Source["id"]) => ProvidedEffect<ReturnType<typeof getSource>>;
-    update: (
-      sourceId: Source["id"],
-      payload: UpdateSourcePayload,
-    ) => ProvidedEffect<ReturnType<typeof updateSource>>;
     remove: (
       sourceId: Source["id"],
     ) => MappedProvidedEffect<ReturnType<typeof removeSource>, boolean>;
@@ -220,24 +168,18 @@ export type CreateExecutorEffectOptions = ExecutorRuntimeOptions & {
   backend: ExecutorBackend;
 };
 
+type CreateExecutorEffectOptionsWithPlugins<
+  TPlugins extends readonly ExecutorSdkPlugin<any, any>[],
+> = CreateExecutorEffectOptions & {
+  plugins?: TPlugins;
+};
+
 const fromRuntime = (runtime: ExecutorRuntime): ExecutorEffect => {
   const installation = runtime.localInstallation;
   const scopeId = installation.scopeId;
   const actorScopeId = installation.actorScopeId;
   const provide = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
     provideExecutorRuntime(effect, runtime);
-  const provideSourceAuth = <A, E>(
-    execute: (
-      service: Effect.Effect.Success<typeof RuntimeSourceAuthServiceTag>,
-    ) => Effect.Effect<A, E, any>,
-  ) => provide(Effect.flatMap(RuntimeSourceAuthServiceTag, execute));
-  const createSdkSourceSession = () => {
-    const id = crypto.randomUUID();
-    return {
-      executionId: ExecutionIdSchema.make(`exec_sdk_${id}`),
-      interactionId: `executor.sdk.${id}` as never,
-    };
-  };
 
   return {
     runtime,
@@ -249,37 +191,6 @@ const fromRuntime = (runtime: ExecutorRuntime): ExecutorEffect => {
     local: {
       installation: () => provide(getLocalInstallation()),
       config: () => provide(getLocalInstanceConfig()),
-      credentials: {
-        get: ({ sourceId, interactionId }) =>
-          provide(
-            getSourceCredentialInteraction({
-              scopeId,
-              sourceId,
-              interactionId,
-            }),
-          ),
-        submit: ({ sourceId, interactionId, action, token }) =>
-          provide(
-            submitSourceCredentialInteraction({
-              scopeId,
-              sourceId,
-              interactionId,
-              action,
-              token,
-            }),
-          ),
-        complete: ({ sourceId, state, code, error, errorDescription }) =>
-          provide(
-            completeSourceCredentialSetup({
-              scopeId,
-              sourceId,
-              state,
-              code,
-              error,
-              errorDescription,
-            }),
-          ),
-      },
     },
     secrets: {
       list: () => provide(listLocalSecrets()),
@@ -300,25 +211,8 @@ const fromRuntime = (runtime: ExecutorRuntime): ExecutorEffect => {
         ),
     },
     sources: {
-      add: (input, options) =>
-        provideSourceAuth((service) => {
-          const session = createSdkSourceSession();
-          return service.addExecutorSource(
-            {
-              ...input,
-              scopeId,
-              actorScopeId,
-              executionId: session.executionId,
-              interactionId: session.interactionId,
-            },
-            options,
-          );
-        }),
       list: () => provide(listSources({ scopeId, actorScopeId })),
-      create: (payload) => provide(createSource({ scopeId, actorScopeId, payload })),
       get: (sourceId) => provide(getSource({ scopeId, sourceId, actorScopeId })),
-      update: (sourceId, payload) =>
-        provide(updateSource({ scopeId, sourceId, actorScopeId, payload })),
       remove: (sourceId) =>
         provide(removeSource({ scopeId, sourceId })).pipe(
           Effect.map((result) => result.removed),
@@ -366,15 +260,78 @@ const fromRuntime = (runtime: ExecutorRuntime): ExecutorEffect => {
   };
 };
 
-export const createExecutorEffect = (
-  options: CreateExecutorEffectOptions,
-): Effect.Effect<ExecutorEffect, Error> =>
-  Effect.map(
+export const createExecutorEffect = <
+  const TPlugins extends readonly ExecutorSdkPlugin<any, any>[] = [],
+>(
+  options: CreateExecutorEffectOptionsWithPlugins<TPlugins>,
+): Effect.Effect<ExecutorEffect & ExecutorSdkPluginExtensions<TPlugins>, Error> => {
+  configureExecutorSourcePlugins(options.plugins ?? []);
+
+  return Effect.map(
     options.backend.createRuntime({
       executionResolver: options.executionResolver,
       createInternalToolMap: options.createInternalToolMap,
       resolveSecretMaterial: options.resolveSecretMaterial,
       getLocalServerBaseUrl: options.getLocalServerBaseUrl,
     }),
-    fromRuntime,
+    (runtime) => {
+      const executor = fromRuntime(runtime);
+      const providePluginHostEffect = <A>(
+        effect: Effect.Effect<A, unknown, any>,
+      ): Effect.Effect<A, Error, never> =>
+        provideExecutorRuntime(effect, runtime).pipe(
+          Effect.mapError((cause) =>
+            cause instanceof Error ? cause : new Error(String(cause)),
+          ),
+        );
+      const host: ExecutorSdkPluginHost = {
+        sources: {
+          create: ({ source }) =>
+            providePluginHostEffect(
+              createManagedSource({
+                scopeId: executor.scopeId,
+                actorScopeId: executor.actorScopeId,
+                source,
+              }),
+            ),
+          get: (sourceId) =>
+            providePluginHostEffect(
+              getSource({
+                scopeId: executor.scopeId,
+                sourceId,
+                actorScopeId: executor.actorScopeId,
+              }),
+            ),
+          save: (source) =>
+            providePluginHostEffect(
+              saveManagedSource({
+                actorScopeId: executor.actorScopeId,
+                source,
+              }),
+            ),
+          remove: (sourceId) =>
+            providePluginHostEffect(
+              removeSource({
+                scopeId: executor.scopeId,
+                sourceId,
+              }).pipe(Effect.map((result) => result.removed)),
+            ),
+        },        
+      };
+      const extensions = Object.fromEntries(
+        (options.plugins ?? []).map((plugin) => [
+          plugin.key,
+          plugin.extendExecutor?.({
+            executor,
+            host,
+          }) ?? {},
+        ]),
+      );
+
+      return Object.assign(
+        executor,
+        extensions,
+      ) as ExecutorEffect & ExecutorSdkPluginExtensions<TPlugins>;
+    },
   );
+};
