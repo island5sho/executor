@@ -79,11 +79,15 @@ const syncArtifactsForSource = (input: {
                 actorScopeId: input.actorScopeId,
               }),
             );
+
+            return erroredSource;
           }
 
-          return yield* input.operation.unknownStorage(
-            error,
-            "Failed syncing source tools",
+          return yield* Effect.fail(
+            input.operation.unknownStorage(
+              error,
+              "Failed syncing source tools",
+            ),
           );
         }),
     });
