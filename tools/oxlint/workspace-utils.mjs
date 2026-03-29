@@ -77,6 +77,33 @@ export const isRelativeSpecifier = (specifier) =>
 export const resolveRelativeSpecifier = (filename, specifier) =>
   path.resolve(path.dirname(filename), specifier);
 
+export const isTestLikeFile = (filename) =>
+  filename.includes(".test.")
+  || filename.includes(".spec.")
+  || filename.endsWith(".test.ts")
+  || filename.endsWith(".test.tsx")
+  || filename.endsWith(".spec.ts")
+  || filename.endsWith(".spec.tsx");
+
+export const isRuntimeOrPluginImplementationFile = (filename) => {
+  if (isTestLikeFile(filename)) {
+    return false;
+  }
+
+  return (
+    filename.includes(
+      `${path.sep}packages${path.sep}platform${path.sep}sdk${path.sep}src${path.sep}runtime${path.sep}`,
+    )
+    || filename.includes(
+      `${path.sep}packages${path.sep}platform${path.sep}sdk-file${path.sep}src${path.sep}`,
+    )
+    || (
+      filename.includes(`${path.sep}plugins${path.sep}`)
+      && filename.includes(`${path.sep}sdk${path.sep}`)
+    )
+  );
+};
+
 export const readStaticSpecifier = (node) => {
   if (!node) {
     return null;

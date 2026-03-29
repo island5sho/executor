@@ -155,7 +155,6 @@ const toImportableFields = (
       ...(field.sectionId ? { sectionId: field.sectionId } : {}),
     }));
 
-const itemSelectionKey = (itemId: string) => `item:${itemId}`;
 const secretSelectionKey = (itemId: string, fieldId: string) =>
   `secret:${itemId}:${fieldId}`;
 
@@ -404,7 +403,7 @@ const createImportedSecretRecord = (input: {
   secretStored: OnePasswordSecretStoredData;
   name: string | null;
   purpose?: SecretMaterialPurpose;
-}): Effect.Effect<OnePasswordImportSecretResult, Error, any> =>
+}): Effect.Effect<OnePasswordImportSecretResult, Error, never> =>
   Effect.gen(function* () {
     const now = Date.now();
     const secret: SecretMaterial = {
@@ -556,7 +555,7 @@ export const onePasswordSdkPlugin = (input: {
               catch: (cause) =>
                 cause instanceof Error ? cause : new Error(String(cause)),
             })),
-        updateSecret: ({ secret, secretStored, stored, name, value }) =>
+        updateSecret: ({ secret: _secret, secretStored, stored, name, value }) =>
           Effect.flatMap(makeClient(stored), (client) =>
             Effect.tryPromise({
               try: async () => {

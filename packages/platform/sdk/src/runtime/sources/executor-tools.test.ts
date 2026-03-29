@@ -29,6 +29,9 @@ import {
 import {
   openApiSdkPlugin,
 } from "../../../../../../plugins/openapi/sdk";
+import {
+  localSecretStoreSdkPlugin,
+} from "../../../../../../plugins/local-secret-store/sdk";
 
 const staticOpenApiDocument = JSON.stringify({
   openapi: "3.1.0",
@@ -56,17 +59,29 @@ const staticOpenApiDocument = JSON.stringify({
 });
 
 const startStaticSpecServer = async () => {
+  let lastAuthorizationHeader: string | null = null;
   const server = createServer((request, response) => {
-    if (request.url !== "/openapi.json") {
-      response.writeHead(404);
-      response.end("Not Found");
+    if (request.url === "/openapi.json") {
+      response.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+      });
+      response.end(staticOpenApiDocument);
       return;
     }
 
-    response.writeHead(200, {
-      "content-type": "application/json; charset=utf-8",
-    });
-    response.end(staticOpenApiDocument);
+    if (request.url === "/widgets") {
+      lastAuthorizationHeader = request.headers.authorization ?? null;
+      response.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+      });
+      response.end(JSON.stringify([{ id: "widget_1" }]));
+      return;
+    }
+
+    {
+      response.writeHead(404);
+      response.end("Not Found");
+    }
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -84,7 +99,9 @@ const startStaticSpecServer = async () => {
   }
 
   return {
+    baseUrl: `http://127.0.0.1:${(address as AddressInfo).port}`,
     specUrl: `http://127.0.0.1:${(address as AddressInfo).port}/openapi.json`,
+    lastAuthorizationHeader: () => lastAuthorizationHeader,
     close: () =>
       new Promise<void>((resolve, reject) => {
         server.close((error) => {
@@ -217,6 +234,107 @@ describe("executor internal tools", () => {
         removed: true,
       });
       expect(stored.has((created as { id: string }).id)).toBe(false);
+    }).pipe(Effect.provide(NodeFileSystem.layer)),
+  );
+
+  it.scoped("invokes persisted OpenAPI source tools outside the runtime layer", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const workspaceRoot = yield* fs.makeTempDirectory({
+        prefix: "executor-openapi-source-tools-",
+      });
+      const stored = new Map<string, Record<string, unknown>>();
+      const specServer = yield* Effect.acquireRelease(
+        Effect.tryPromise({
+          try: () => startStaticSpecServer(),
+          catch: (cause) =>
+            cause instanceof Error ? cause : new Error(String(cause)),
+        }),
+        (server) =>
+          Effect.promise(() => server.close()).pipe(Effect.orDie),
+      );
+      const executor = yield* Effect.acquireRelease(
+        createLocalExecutorEffect({
+          localDataDir: ":memory:",
+          workspaceRoot,
+          plugins: [
+            localSecretStoreSdkPlugin,
+            openApiSdkPlugin({
+              storage: {
+                get: ({ sourceId }) =>
+                  Effect.succeed((stored.get(sourceId) as any) ?? null),
+                put: ({ sourceId, value }) =>
+                  Effect.sync(() => {
+                    stored.set(sourceId, value as any);
+                  }),
+                remove: ({ sourceId }) =>
+                  Effect.sync(() => {
+                    stored.delete(sourceId);
+                  }),
+              },
+            }),
+          ] as const,
+        }),
+        (openedExecutor) =>
+          Effect.promise(() => openedExecutor.close()).pipe(
+            Effect.orDie,
+            Effect.zipRight(
+              fs.remove(workspaceRoot, {
+                recursive: true,
+                force: true,
+              }),
+            ),
+          ),
+      );
+
+      const tokenRef = yield* executor.secrets.create({
+        name: "OpenAPI Token",
+        purpose: "auth_material",
+        value: "token-from-secret-store",
+      }).pipe(Effect.map((secret) => ({ secretId: secret.id })));
+      const environment = yield* resolveExecutionEnvironment(executor);
+
+      const created = yield* environment.toolInvoker.invoke({
+        path: "executor.openapi.createSource",
+        args: {
+          name: "Demo API",
+          specUrl: specServer.specUrl,
+          baseUrl: specServer.baseUrl,
+          auth: {
+            kind: "bearer",
+            tokenSecretRef: tokenRef,
+            headerName: null,
+            prefix: null,
+          },
+        },
+      });
+
+      expect((created as { kind: string }).kind).toBe("openapi");
+
+      const response = yield* environment.toolInvoker.invoke({
+        path: "demo-api.widgets.listWidgets",
+        args: {},
+      });
+
+      expect(response).toMatchObject({
+        data: [{ id: "widget_1" }],
+        error: null,
+        status: 200,
+      });
+      expect(specServer.lastAuthorizationHeader()).toBe("Bearer token-from-secret-store");
+
+      const executed = yield* environment.executor.execute(
+        'return await tools["demo-api.widgets.listWidgets"]({ limit: 100 });',
+        environment.toolInvoker,
+      );
+
+      expect(executed).toMatchObject({
+        result: {
+          data: [{ id: "widget_1" }],
+          error: null,
+          status: 200,
+        },
+      });
     }).pipe(Effect.provide(NodeFileSystem.layer)),
   );
 });

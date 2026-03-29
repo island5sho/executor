@@ -9,7 +9,6 @@ import type {
 } from "@executor/platform-sdk/plugins";
 import type {
   SecretMaterial,
-  SecretMaterialPurpose,
   SecretRef,
   SecretStore,
   SecretStoreId,
@@ -21,6 +20,7 @@ import * as Option from "effect/Option";
 import {
   getSecretStoreContribution,
   registeredSecretStoreContributions,
+  ExecutorStateStore,
   LocalInstanceConfigService,
   runtimeEffectError,
   SecretMaterialDeleterService,
@@ -69,13 +69,7 @@ const loadStoreCapabilities = (
 ) =>
   resolveStoreContribution(pluginRegistry, store).getCapabilities({
     store,
-  }) as Effect.Effect<{
-    canCreateSecrets: boolean;
-    canUpdateSecrets: boolean;
-    canDeleteSecrets: boolean;
-    canBrowseSecrets: boolean;
-    canImportSecrets: boolean;
-  }, Error, never>;
+  });
 
 const parseDefaultStoreKind = (value: string | undefined): string | null => {
   const normalized = trimOrNull(value)?.toLowerCase();
@@ -172,13 +166,22 @@ const loadStoreById = (input: {
     return store.value;
   });
 
-const provideSecretResolver = <A, E>(
-  effect: Effect.Effect<A, E, any>,
+const provideSecretResolver = <A, E, R>(
+  effect: Effect.Effect<A, E, R>,
+  executorState: ExecutorStateStoreShape,
   resolveSecretMaterial: ResolveSecretMaterial,
-): Effect.Effect<A, E, never> =>
+): Effect.Effect<
+  A,
+  E,
+  Exclude<
+    Exclude<R, ExecutorStateStore>,
+    SecretMaterialResolverService
+  >
+> =>
   effect.pipe(
+    Effect.provideService(ExecutorStateStore, executorState),
     Effect.provideService(SecretMaterialResolverService, resolveSecretMaterial),
-  ) as Effect.Effect<A, E, never>;
+  );
 
 export const createDefaultSecretMaterialResolver = (input: {
   executorState: ExecutorStateStoreShape;
@@ -203,6 +206,7 @@ export const createDefaultSecretMaterialResolver = (input: {
           store,
           context,
         }),
+        input.executorState,
         resolveSecretMaterial,
       );
     });
@@ -248,6 +252,7 @@ export const createDefaultSecretMaterialStorer = (input: {
           value,
           name,
         }),
+        input.executorState,
         input.resolveSecretMaterial,
       );
 
@@ -306,6 +311,7 @@ export const createDefaultSecretMaterialUpdater = (input: {
           name,
           value,
         }),
+        input.executorState,
         input.resolveSecretMaterial,
       );
 
@@ -357,6 +363,7 @@ export const createDefaultSecretMaterialDeleter = (input: {
               secret: material,
               store,
             }),
+            input.executorState,
             input.resolveSecretMaterial,
           )
         : false;

@@ -246,9 +246,9 @@ export const localToolsSdkPlugin = () =>
       },
     },
     start: ({ executor, source }) => {
-      const provideRuntime = <A>(
-        effect: Effect.Effect<A, Error, any>,
-      ): Effect.Effect<A, Error, never> =>
+      const provideRuntime = <A, E, R>(
+        effect: Effect.Effect<A, E, R>,
+      ): Effect.Effect<A, E, never> =>
         provideExecutorRuntime(effect, executor.runtime);
 
       return provideRuntime(

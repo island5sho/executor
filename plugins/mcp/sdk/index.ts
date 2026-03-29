@@ -21,9 +21,6 @@ import {
   createSourceCatalogSyncResult,
   normalizeSourceDiscoveryUrl,
   probeHeadersFromAuth,
-  SourceTransportSchema,
-  StringArraySchema,
-  StringMapSchema,
   type SourceDiscoveryResult,
 } from "@executor/source-core";
 import {
@@ -431,7 +428,14 @@ const createPersistedMcpAuthProvider = (input: {
   sourceId: string;
   stored: McpStoredSourceData;
   storage: McpSourceStorage;
-}): Effect.Effect<OAuthClientProvider, Error, any> =>
+}): Effect.Effect<
+  OAuthClientProvider,
+  Error,
+  | SecretMaterialResolverService
+  | SecretMaterialStorerService
+  | SecretMaterialUpdaterService
+  | SecretMaterialDeleterService
+> =>
   Effect.gen(function* () {
     if (input.stored.auth.kind !== "oauth2") {
       return yield* runtimeEffectError(
@@ -612,7 +616,14 @@ const createStoredMcpConnector = (input: {
   sourceId: string;
   stored: McpStoredSourceData;
   storage: McpSourceStorage;
-}): Effect.Effect<ReturnType<typeof createSdkMcpConnector>, Error, any> =>
+}): Effect.Effect<
+  ReturnType<typeof createSdkMcpConnector>,
+  Error,
+  | SecretMaterialResolverService
+  | SecretMaterialStorerService
+  | SecretMaterialUpdaterService
+  | SecretMaterialDeleterService
+> =>
   Effect.gen(function* () {
     const authProvider =
       input.stored.auth.kind === "oauth2"
@@ -1058,9 +1069,9 @@ export const mcpSdkPlugin = (
     },
   ] as const,
   extendExecutor: ({ source, executor }) => {
-    const provideRuntime = <A>(
-      effect: Effect.Effect<A, Error, any>,
-    ): Effect.Effect<A, Error, never> =>
+    const provideRuntime = <A, E, R>(
+      effect: Effect.Effect<A, E, R>,
+    ): Effect.Effect<A, E, never> =>
       provideExecutorRuntime(effect, executor.runtime);
 
     return {

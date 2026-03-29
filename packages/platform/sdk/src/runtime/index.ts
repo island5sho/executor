@@ -412,7 +412,7 @@ export const createExecutorRuntimeLayer = (
 
   const sourceCatalogSyncLayer = RuntimeSourceCatalogSyncLive.pipe(
     Layer.provide(
-      Layer.mergeAll(baseLayer, secretMaterialLayer),
+      Layer.mergeAll(baseLayer, secretMaterialLayer, localToolRuntimeLayer),
     ),
   );
 

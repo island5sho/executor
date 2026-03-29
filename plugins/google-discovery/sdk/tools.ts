@@ -516,11 +516,7 @@ export const createGoogleDiscoveryToolFromDefinition = (
             }
 
             return body;
-          }).pipe(Effect.provide(httpClientLayer)) as Effect.Effect<
-            unknown,
-            Error,
-            never
-          >),
+          }).pipe(Effect.provide(httpClientLayer))),
         ),
     },
     metadata,

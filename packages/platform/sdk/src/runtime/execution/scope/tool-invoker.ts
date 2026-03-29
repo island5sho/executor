@@ -31,6 +31,7 @@ import type {
 } from "../../scope/runtime-context";
 import {
   type LocalToolRuntime,
+  LocalToolRuntimeLoaderService,
 } from "../../local-tool-runtime";
 import {
   type InstallationStoreShape,
@@ -39,10 +40,12 @@ import {
   type ScopeConfigStoreShape,
   type ScopeStateStoreShape,
 } from "../../scope/storage";
-import type {
-  ExecutorStateStoreShape,
+import {
+  ExecutorStateStore,
+  type ExecutorStateStoreShape,
 } from "../../executor-state-store";
 import {
+  RuntimeSourceStoreService,
   type RuntimeSourceStore,
 } from "../../sources/source-store";
 import type {
@@ -117,11 +120,22 @@ export const createScopeToolInvoker = (input: {
     Layer.succeed(SecretMaterialDeleterService, input.secretMaterialServices.delete),
     Layer.succeed(SecretMaterialUpdaterService, input.secretMaterialServices.update),
   );
-  const provideWorkspaceStorage = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
-    effect.pipe(Effect.provide(scopeStorageLayer));
-  const provideSecretMaterialServices = <A, E, R>(
-    effect: Effect.Effect<A, E, R>,
-  ) => effect.pipe(Effect.provide(secretMaterialLayer));
+  const persistedToolRuntimeLayer = Layer.mergeAll(
+    scopeStorageLayer,
+    secretMaterialLayer,
+    Layer.succeed(ExecutorStateStore, input.executorStateStore),
+    Layer.succeed(RuntimeSourceStoreService, input.sourceStore),
+    Layer.succeed(
+      RuntimeSourceCatalogSyncService,
+      input.sourceCatalogSyncService,
+    ),
+    Layer.succeed(
+      LocalToolRuntimeLoaderService,
+      LocalToolRuntimeLoaderService.of({
+        load: () => Effect.succeed(input.localToolRuntime),
+      }),
+    ),
+  );
 
   const executorTools = createExecutorToolMap({
     pluginRegistry: input.pluginRegistry,
@@ -181,9 +195,7 @@ export const createScopeToolInvoker = (input: {
     context?: Record<string, unknown>;
   }) =>
     provideRuntimeLocalScope(
-      provideSecretMaterialServices(
-        provideWorkspaceStorage(
-        Effect.gen(function* () {
+      Effect.gen(function* () {
           const catalogTool = yield* loadWorkspaceCatalogToolByPath({
             scopeId: input.scopeId,
             actorScopeId: input.actorScopeId,
@@ -215,9 +227,7 @@ export const createScopeToolInvoker = (input: {
             onElicitation: input.onElicitation,
             context: invocation.context,
           });
-        }),
-        ),
-      ),
+        }).pipe(Effect.provide(persistedToolRuntimeLayer)),
       input.runtimeLocalScope,
     );
 
@@ -227,11 +237,7 @@ export const createScopeToolInvoker = (input: {
       invoke: ({ path, args, context }) => {
         const effect = authoredToolPaths.has(path)
           ? authoredInvoker.invoke({ path, args, context })
-          : invokePersistedTool({ path, args, context }) as Effect.Effect<
-              unknown,
-              unknown,
-              never
-            >;
+          : invokePersistedTool({ path, args, context });
 
         return provideRuntimeLocalScope(effect, input.runtimeLocalScope);
       },

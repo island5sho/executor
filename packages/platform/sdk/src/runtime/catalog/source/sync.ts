@@ -12,6 +12,8 @@ import {
   type RuntimeLocalScopeState,
 } from "../../scope/runtime-context";
 import {
+  ScopeConfigStore,
+  type ScopeConfigStoreShape,
   SourceArtifactStore,
   type SourceArtifactStoreShape,
   ScopeStateStore,
@@ -34,6 +36,23 @@ import {
 import {
   runtimeEffectError,
 } from "../../effect-errors";
+import {
+  ExecutorStateStore,
+} from "../../executor-state-store";
+import {
+  LocalToolRuntimeLoaderService,
+  type LocalToolRuntimeLoaderShape,
+} from "../../local-tool-runtime";
+import {
+  SecretMaterialDeleterService,
+  SecretMaterialResolverService,
+  SecretMaterialStorerService,
+  SecretMaterialUpdaterService,
+  type DeleteSecretMaterial,
+  type ResolveSecretMaterial,
+  type StoreSecretMaterial,
+  type UpdateSecretMaterial,
+} from "../../scope/secret-material-providers";
 
 const shouldIndexSource = (source: Source): boolean =>
   source.enabled
@@ -42,23 +61,39 @@ const shouldIndexSource = (source: Source): boolean =>
 type RuntimeSourceCatalogSyncDeps = {
   pluginRegistry: Effect.Effect.Success<typeof ExecutorPluginRegistryService>;
   runtimeLocalScope: RuntimeLocalScopeState;
+  executorStateStore: Effect.Effect.Success<typeof ExecutorStateStore>;
+  localToolRuntimeLoader: LocalToolRuntimeLoaderShape;
+  scopeConfigStore: ScopeConfigStoreShape;
   scopeStateStore: ScopeStateStoreShape;
   sourceArtifactStore: SourceArtifactStoreShape;
   sourceTypeDeclarationsRefresher: SourceTypeDeclarationsRefresherShape;
+  secretMaterialServices: {
+    resolve: ResolveSecretMaterial;
+    store: StoreSecretMaterial;
+    delete: DeleteSecretMaterial;
+    update: UpdateSecretMaterial;
+  };
 };
 
 type SourceCatalogSyncServices =
   | ExecutorPluginRegistryService
   | RuntimeLocalScopeService
+  | ExecutorStateStore
+  | LocalToolRuntimeLoaderService
+  | ScopeConfigStore
   | ScopeStateStore
   | SourceArtifactStore
-  | SourceTypeDeclarationsRefresherService;
+  | SourceTypeDeclarationsRefresherService
+  | SecretMaterialResolverService
+  | SecretMaterialStorerService
+  | SecretMaterialDeleterService
+  | SecretMaterialUpdaterService;
 
 export type RuntimeSourceCatalogSyncShape = {
   sync: (input: {
     source: Source;
     actorScopeId?: ScopeId | null;
-  }) => Effect.Effect<void, Error, any>;
+  }) => Effect.Effect<void, Error, never>;
 };
 
 export class RuntimeSourceCatalogSyncService extends Context.Tag(
@@ -78,13 +113,26 @@ const ensureRuntimeCatalogSyncWorkspace = (
     }
   });
 
+const sourceContributionRuntimeLayer = (
+  deps: RuntimeSourceCatalogSyncDeps,
+) =>
+  Layer.mergeAll(
+    Layer.succeed(ExecutorStateStore, deps.executorStateStore),
+    Layer.succeed(LocalToolRuntimeLoaderService, deps.localToolRuntimeLoader),
+    Layer.succeed(ScopeConfigStore, deps.scopeConfigStore),
+    Layer.succeed(SecretMaterialResolverService, deps.secretMaterialServices.resolve),
+    Layer.succeed(SecretMaterialStorerService, deps.secretMaterialServices.store),
+    Layer.succeed(SecretMaterialDeleterService, deps.secretMaterialServices.delete),
+    Layer.succeed(SecretMaterialUpdaterService, deps.secretMaterialServices.update),
+  );
+
 const syncSourceCatalogWithDeps = (
   deps: RuntimeSourceCatalogSyncDeps,
   input: {
     source: Source;
     actorScopeId?: ScopeId | null;
   },
-): Effect.Effect<void, Error, any> =>
+): Effect.Effect<void, Error, never> =>
   Effect.gen(function* () {
     yield* ensureRuntimeCatalogSyncWorkspace(deps, input.source.scopeId);
 
@@ -121,7 +169,7 @@ const syncSourceCatalogWithDeps = (
     );
     const irModel = yield* definition.syncCatalog({
       source: input.source,
-    });
+    }).pipe(Effect.provide(sourceContributionRuntimeLayer(deps)));
     const snapshot = snapshotFromSourceCatalogSyncResult(irModel);
     yield* deps.sourceArtifactStore.write({
       sourceId: input.source.id,
@@ -172,17 +220,33 @@ export const syncSourceCatalog = (input: {
   Effect.gen(function* () {
     const runtimeLocalScope = yield* RuntimeLocalScopeService;
     const pluginRegistry = yield* ExecutorPluginRegistryService;
+    const executorStateStore = yield* ExecutorStateStore;
+    const localToolRuntimeLoader = yield* LocalToolRuntimeLoaderService;
+    const scopeConfigStore = yield* ScopeConfigStore;
     const scopeStateStore = yield* ScopeStateStore;
     const sourceArtifactStore = yield* SourceArtifactStore;
     const sourceTypeDeclarationsRefresher =
       yield* SourceTypeDeclarationsRefresherService;
+    const resolveSecretMaterial = yield* SecretMaterialResolverService;
+    const storeSecretMaterial = yield* SecretMaterialStorerService;
+    const deleteSecretMaterial = yield* SecretMaterialDeleterService;
+    const updateSecretMaterial = yield* SecretMaterialUpdaterService;
     return yield* syncSourceCatalogWithDeps(
       {
         pluginRegistry,
         runtimeLocalScope,
+        executorStateStore,
+        localToolRuntimeLoader,
+        scopeConfigStore,
         scopeStateStore,
         sourceArtifactStore,
         sourceTypeDeclarationsRefresher,
+        secretMaterialServices: {
+          resolve: resolveSecretMaterial,
+          store: storeSecretMaterial,
+          delete: deleteSecretMaterial,
+          update: updateSecretMaterial,
+        },
       },
       {
         source: input.source,
@@ -196,16 +260,32 @@ export const RuntimeSourceCatalogSyncLive = Layer.effect(
   Effect.gen(function* () {
     const runtimeLocalScope = yield* RuntimeLocalScopeService;
     const pluginRegistry = yield* ExecutorPluginRegistryService;
+    const executorStateStore = yield* ExecutorStateStore;
+    const localToolRuntimeLoader = yield* LocalToolRuntimeLoaderService;
+    const scopeConfigStore = yield* ScopeConfigStore;
     const scopeStateStore = yield* ScopeStateStore;
     const sourceArtifactStore = yield* SourceArtifactStore;
     const sourceTypeDeclarationsRefresher =
       yield* SourceTypeDeclarationsRefresherService;
+    const resolveSecretMaterial = yield* SecretMaterialResolverService;
+    const storeSecretMaterial = yield* SecretMaterialStorerService;
+    const deleteSecretMaterial = yield* SecretMaterialDeleterService;
+    const updateSecretMaterial = yield* SecretMaterialUpdaterService;
     const deps: RuntimeSourceCatalogSyncDeps = {
       pluginRegistry,
       runtimeLocalScope,
+      executorStateStore,
+      localToolRuntimeLoader,
+      scopeConfigStore,
       scopeStateStore,
       sourceArtifactStore,
       sourceTypeDeclarationsRefresher,
+      secretMaterialServices: {
+        resolve: resolveSecretMaterial,
+        store: storeSecretMaterial,
+        delete: deleteSecretMaterial,
+        update: updateSecretMaterial,
+      },
     };
 
     return RuntimeSourceCatalogSyncService.of({

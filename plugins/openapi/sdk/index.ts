@@ -19,6 +19,7 @@ import {
 } from "@executor/platform-sdk/plugins";
 import {
   createPluginLocalConfigEntrySchema,
+  provideExecutorRuntime,
   pluginLocalConfigSourceFromConfig,
   runtimeEffectError,
   SecretMaterialResolverService,
@@ -370,7 +371,7 @@ const decodeResponseBody = async (response: Response): Promise<unknown> => {
 
 const resolveBearerToken = (
   stored: OpenApiStoredSourceData,
-): Effect.Effect<string | null, Error, any> => {
+): Effect.Effect<string | null, Error, SecretMaterialResolverService> => {
   const { auth } = stored;
   if (auth.kind === "none") {
     return Effect.succeed(null);
@@ -817,10 +818,10 @@ export const openApiSdkPlugin = (
     },
   ] as const,
   extendExecutor: ({ source, executor }) => {
-    const provideRuntime = <A>(
-      effect: Effect.Effect<A, Error, any>,
-    ): Effect.Effect<A, Error, never> =>
-      effect.pipe(Effect.provide(executor.runtime.managedRuntime));
+    const provideRuntime = <A, E, R>(
+      effect: Effect.Effect<A, E, R>,
+    ): Effect.Effect<A, E, never> =>
+      provideExecutorRuntime(effect, executor.runtime);
 
     return {
       previewDocument: (input) =>

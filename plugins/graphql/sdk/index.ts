@@ -185,7 +185,7 @@ const parseGraphqlResponseBody = async (
 
 const resolveBearerToken = (
   auth: GraphqlStoredSourceData["auth"],
-): Effect.Effect<string | null, Error, any> =>
+): Effect.Effect<string | null, Error, SecretMaterialResolverService> =>
   auth.kind === "none"
     ? Effect.succeed(null)
     : Effect.flatMap(SecretMaterialResolverService, (resolveSecretMaterial) =>
@@ -207,7 +207,7 @@ const resolveBearerPrefix = (
 
 const resolveGraphqlHeaders = (
   stored: GraphqlStoredSourceData,
-): Effect.Effect<Record<string, string>, Error, any> =>
+): Effect.Effect<Record<string, string>, Error, SecretMaterialResolverService> =>
   Effect.gen(function* () {
     const bearerToken = yield* resolveBearerToken(stored.auth);
     return {
@@ -589,9 +589,9 @@ export const graphqlSdkPlugin = (options: {
     },
   ] as const,
   extendExecutor: ({ source, executor }) => {
-    const provideRuntime = <A>(
-      effect: Effect.Effect<A, Error, any>,
-    ): Effect.Effect<A, Error, never> =>
+    const provideRuntime = <A, E, R>(
+      effect: Effect.Effect<A, E, R>,
+    ): Effect.Effect<A, E, never> =>
       provideExecutorRuntime(effect, executor.runtime);
 
     return {

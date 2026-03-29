@@ -45,10 +45,14 @@ import {
   type UpdateSecretMaterial,
 } from "../scope/secret-material-providers";
 import {
+  InstallationStore,
   type InstallationStoreShape,
   makeLocalStorageLayer,
+  ScopeConfigStore,
   type ScopeConfigStoreShape,
+  ScopeStateStore,
   type ScopeStateStoreShape,
+  SourceArtifactStore,
   type SourceArtifactStoreShape,
 } from "../scope/storage";
 import {
@@ -83,7 +87,6 @@ const coreSourceManagementHelpLines = (): readonly string[] => [
 export const getExecutorInternalToolHelpLines = (
   pluginRegistry: ExecutorSdkPluginRegistry,
 ): readonly string[] => {
-  const sources = registeredSourceContributions(pluginRegistry);
   const managementTools = registeredManagementToolContributions(pluginRegistry);
 
   return [
@@ -143,8 +146,21 @@ const createSourceConnectorHost = (input: {
   },
 });
 
-const runExecutorToolEffect = async <A>(
-  effect: Effect.Effect<A, unknown, any>,
+type ExecutorToolRuntimeServices =
+  | InstallationStore
+  | ScopeConfigStore
+  | ScopeStateStore
+  | SourceArtifactStore
+  | ExecutorStateStore
+  | RuntimeSourceStoreService
+  | RuntimeSourceCatalogSyncService
+  | SecretMaterialResolverService
+  | SecretMaterialStorerService
+  | SecretMaterialDeleterService
+  | SecretMaterialUpdaterService;
+
+const runExecutorToolEffect = async <A, E>(
+  effect: Effect.Effect<A, E, ExecutorToolRuntimeServices>,
   input: {
     executorStateStore: ExecutorStateStoreShape;
     sourceStore: RuntimeSourceStore;
@@ -199,7 +215,7 @@ const runExecutorToolEffect = async <A>(
     provideOptionalRuntimeLocalScope(
       effect.pipe(Effect.provide(servicesLayer)),
       input.runtimeLocalScope,
-    ) as Effect.Effect<A, unknown, never>,
+    ),
   );
 };
 

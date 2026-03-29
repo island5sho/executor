@@ -42,6 +42,8 @@
     "executor-monorepo/no-async-effect-vitest-tests": "error",
     "executor-monorepo/no-cross-workspace-relative-imports": "error",
     "executor-monorepo/no-direct-effect-tag-read": "error",
+    "executor-monorepo/no-effect-env-any": "error",
+    "executor-monorepo/no-effect-never-cast": "error",
     "executor-monorepo/no-effect-run-in-effect-vitest-tests": "error",
     "executor-monorepo/no-manual-httpapi-openapi-bridge": "error",
     "executor-monorepo/no-manual-openapi-documents": "error",

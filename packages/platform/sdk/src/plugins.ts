@@ -25,6 +25,15 @@ import { runtimeEffectError } from "./runtime/effect-errors";
 import {
   ExecutorStateStore,
 } from "./runtime/executor-state-store";
+import {
+  LocalToolRuntimeLoaderService,
+} from "./runtime/local-tool-runtime";
+import {
+  SecretMaterialDeleterService,
+  SecretMaterialResolverService,
+  SecretMaterialStorerService,
+  SecretMaterialUpdaterService,
+} from "./runtime/scope/secret-material-providers";
 import { ScopeConfigStore } from "./runtime/scope/storage";
 
 export type PluginCleanup = {
@@ -58,6 +67,24 @@ const executorSdkPluginInternalsSymbol = Symbol.for(
 type ExecutorSdkPluginInternalCarrier = {
   [executorSdkPluginInternalsSymbol]?: ExecutorSdkPluginInternals;
 };
+
+type ExecutorSourcePluginRuntimeServices =
+  | LocalToolRuntimeLoaderService
+  | SecretMaterialResolverService
+  | SecretMaterialStorerService
+  | SecretMaterialDeleterService
+  | SecretMaterialUpdaterService;
+
+type ExecutorSourceContributionRuntimeServices =
+  | ScopeConfigStore
+  | ExecutorSourcePluginRuntimeServices;
+
+type ExecutorSecretStorePluginRuntimeServices =
+  | SecretMaterialResolverService;
+
+type ExecutorSecretStoreContributionRuntimeServices =
+  | ExecutorStateStore
+  | ExecutorSecretStorePluginRuntimeServices;
 
 export type ExecutorSdkPlugin<
   TKey extends string = string,
@@ -111,32 +138,32 @@ export type ExecutorSourcePluginStorage<TStored> = {
   get: (input: {
     scopeId: ExecutorSource["scopeId"];
     sourceId: ExecutorSource["id"];
-  }) => Effect.Effect<TStored | null, Error, any>;
+  }) => Effect.Effect<TStored | null, Error, never>;
   put: (input: {
     scopeId: ExecutorSource["scopeId"];
     sourceId: ExecutorSource["id"];
     value: TStored;
-  }) => Effect.Effect<void, Error, any>;
+  }) => Effect.Effect<void, Error, never>;
   remove?: (input: {
     scopeId: ExecutorSource["scopeId"];
     sourceId: ExecutorSource["id"];
-  }) => Effect.Effect<void, Error, any>;
+  }) => Effect.Effect<void, Error, never>;
 };
 
 export type ExecutorSecretStorePluginStorage<TStored> = {
   get: (input: {
     scopeId: SecretStore["scopeId"];
     storeId: SecretStore["id"];
-  }) => Effect.Effect<TStored | null, Error, any>;
+  }) => Effect.Effect<TStored | null, Error, never>;
   put: (input: {
     scopeId: SecretStore["scopeId"];
     storeId: SecretStore["id"];
     value: TStored;
-  }) => Effect.Effect<void, Error, any>;
+  }) => Effect.Effect<void, Error, never>;
   remove?: (input: {
     scopeId: SecretStore["scopeId"];
     storeId: SecretStore["id"];
-  }) => Effect.Effect<void, Error, any>;
+  }) => Effect.Effect<void, Error, never>;
 };
 
 export type ExecutorSourcePluginApi<
@@ -293,13 +320,21 @@ export type ExecutorSourcePluginDefinition<
     sync: (input: {
       source: ExecutorSource;
       stored: TStored | null;
-    }) => Effect.Effect<SourceCatalogSyncResult, Error, any>;
+    }) => Effect.Effect<
+      SourceCatalogSyncResult,
+      Error,
+      ExecutorSourcePluginRuntimeServices
+    >;
     invoke: (
       input: SourceInvokeInput & {
         source: ExecutorSource;
         stored: TStored | null;
       },
-    ) => Effect.Effect<SourceInvokeResult, Error, any>;
+    ) => Effect.Effect<
+      SourceInvokeResult,
+      Error,
+      ExecutorSourcePluginRuntimeServices
+    >;
   };
 };
 
@@ -380,7 +415,11 @@ export type ExecutorSecretStorePluginDefinition<
       context?: {
         params?: Readonly<Record<string, string | undefined>>;
       };
-    }) => Effect.Effect<string, Error, any>;
+    }) => Effect.Effect<
+      string,
+      Error,
+      ExecutorSecretStorePluginRuntimeServices
+    >;
     createSecret?: (input: {
       store: SecretStore;
       stored: TStored | null;
@@ -390,7 +429,7 @@ export type ExecutorSecretStorePluginDefinition<
     }) => Effect.Effect<{
       name: string | null;
       secretStored: TSecretStored;
-    }, Error, any>;
+    }, Error, ExecutorSecretStorePluginRuntimeServices>;
     updateSecret?: (input: {
       secret: SecretMaterial;
       secretStored: TSecretStored;
@@ -401,13 +440,17 @@ export type ExecutorSecretStorePluginDefinition<
     }) => Effect.Effect<{
       name: string | null;
       secretStored?: TSecretStored;
-    }, Error, any>;
+    }, Error, ExecutorSecretStorePluginRuntimeServices>;
     deleteSecret?: (input: {
       secret: SecretMaterial;
       secretStored: TSecretStored;
       store: SecretStore;
       stored: TStored | null;
-    }) => Effect.Effect<boolean, Error, any>;
+    }) => Effect.Effect<
+      boolean,
+      Error,
+      ExecutorSecretStorePluginRuntimeServices
+    >;
     browseSecrets?: (input: {
       store: SecretStore;
       stored: TStored | null;
@@ -415,7 +458,7 @@ export type ExecutorSecretStorePluginDefinition<
       query?: string | null;
     }) => Effect.Effect<{
       entries: ReadonlyArray<ExecutorSecretStoreBrowseEntry>;
-    }, Error, any>;
+    }, Error, ExecutorSecretStorePluginRuntimeServices>;
     importSecret?: (input: {
       store: SecretStore;
       stored: TStored | null;
@@ -425,7 +468,7 @@ export type ExecutorSecretStorePluginDefinition<
     }) => Effect.Effect<{
       name: string | null;
       secretStored: TSecretStored;
-    }, Error, any>;
+    }, Error, ExecutorSecretStorePluginRuntimeServices>;
     capabilities?: (input: {
       store: SecretStore;
       stored: TStored | null;
@@ -939,12 +982,20 @@ type ExecutorSourceContribution<TInput = unknown> = {
   }) => Effect.Effect<ExecutorSource, Error, any>;
   syncCatalog: (input: {
     source: ExecutorSource;
-  }) => Effect.Effect<SourceCatalogSyncResult, Error, any>;
+  }) => Effect.Effect<
+    SourceCatalogSyncResult,
+    Error,
+    ExecutorSourceContributionRuntimeServices
+  >;
   invoke: (
     input: SourceInvokeInput & {
       source: ExecutorSource;
     },
-  ) => Effect.Effect<SourceInvokeResult, Error, any>;
+  ) => Effect.Effect<
+    SourceInvokeResult,
+    Error,
+    ExecutorSourceContributionRuntimeServices
+  >;
 };
 
 type ExecutorSecretStoreContribution<TInput = unknown> = {
@@ -973,14 +1024,18 @@ type ExecutorSecretStoreContribution<TInput = unknown> = {
   }) => Effect.Effect<boolean, Error, any>;
   getCapabilities: (input: {
     store: SecretStore;
-  }) => Effect.Effect<ExecutorSecretStorePluginCapabilities, Error, any>;
+  }) => Effect.Effect<ExecutorSecretStorePluginCapabilities, Error, never>;
   resolveSecret: (input: {
     secret: SecretMaterial;
     store: SecretStore;
     context?: {
       params?: Readonly<Record<string, string | undefined>>;
     };
-  }) => Effect.Effect<string, Error, any>;
+  }) => Effect.Effect<
+    string,
+    Error,
+    ExecutorSecretStoreContributionRuntimeServices
+  >;
   createSecret: (input: {
     store: SecretStore;
     purpose: SecretMaterialPurpose;
@@ -989,7 +1044,7 @@ type ExecutorSecretStoreContribution<TInput = unknown> = {
   }) => Effect.Effect<{
     name: string | null;
     secretStored: unknown;
-  }, Error, any>;
+  }, Error, ExecutorSecretStoreContributionRuntimeServices>;
   updateSecret: (input: {
     secret: SecretMaterial;
     store: SecretStore;
@@ -998,18 +1053,22 @@ type ExecutorSecretStoreContribution<TInput = unknown> = {
   }) => Effect.Effect<{
     name: string | null;
     secretStored?: unknown;
-  }, Error, any>;
+  }, Error, ExecutorSecretStoreContributionRuntimeServices>;
   deleteSecret: (input: {
     secret: SecretMaterial;
     store: SecretStore;
-  }) => Effect.Effect<boolean, Error, any>;
+  }) => Effect.Effect<
+    boolean,
+    Error,
+    ExecutorSecretStoreContributionRuntimeServices
+  >;
   browseSecrets: (input: {
     store: SecretStore;
     parentKey?: string | null;
     query?: string | null;
   }) => Effect.Effect<{
     entries: ReadonlyArray<ExecutorSecretStoreBrowseEntry>;
-  }, Error, any>;
+  }, Error, ExecutorSecretStoreContributionRuntimeServices>;
   importSecret: (input: {
     store: SecretStore;
     selectionKey: string;
@@ -1018,7 +1077,7 @@ type ExecutorSecretStoreContribution<TInput = unknown> = {
   }) => Effect.Effect<{
     name: string | null;
     secretStored: unknown;
-  }, Error, any>;
+  }, Error, ExecutorSecretStoreContributionRuntimeServices>;
 };
 
 export type ExecutorSdkPluginRegistry = {

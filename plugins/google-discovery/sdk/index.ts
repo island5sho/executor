@@ -360,7 +360,13 @@ const resolveOauthAccessToken = (input: {
   sourceId: string;
   auth: Extract<GoogleDiscoveryConnectionAuth, { kind: "oauth2" }>;
   storage: GoogleDiscoverySourceStorage;
-}): Effect.Effect<string, Error, any> =>
+}): Effect.Effect<
+  string,
+  Error,
+  | SecretMaterialResolverService
+  | SecretMaterialUpdaterService
+  | SecretMaterialStorerService
+> =>
   Effect.gen(function* () {
     const now = Date.now();
     const needsRefresh =
@@ -449,7 +455,13 @@ const resolveGoogleAuthHeaders = (input: {
   sourceId: string;
   stored: GoogleDiscoveryStoredSourceData;
   storage: GoogleDiscoverySourceStorage;
-}): Effect.Effect<Record<string, string>, Error, any> =>
+}): Effect.Effect<
+  Record<string, string>,
+  Error,
+  | SecretMaterialResolverService
+  | SecretMaterialUpdaterService
+  | SecretMaterialStorerService
+> =>
   Effect.gen(function* () {
     if (input.stored.auth.kind === "none") {
       return {
@@ -1087,9 +1099,9 @@ export const googleDiscoverySdkPlugin = (options: {
     },
   ] as const,
   extendExecutor: ({ source, executor }) => {
-    const provideRuntime = <A>(
-      effect: Effect.Effect<A, Error, any>,
-    ): Effect.Effect<A, Error, never> =>
+    const provideRuntime = <A, E, R>(
+      effect: Effect.Effect<A, E, R>,
+    ): Effect.Effect<A, E, never> =>
       provideExecutorRuntime(effect, executor.runtime);
 
     return {

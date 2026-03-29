@@ -3,6 +3,8 @@ import { definePlugin } from "@oxlint/plugins";
 import noCrossWorkspaceRelativeImports from "./rules/no-cross-workspace-relative-imports.mjs";
 import noAsyncEffectVitestTests from "./rules/no-async-effect-vitest-tests.mjs";
 import noDirectEffectTagRead from "./rules/no-direct-effect-tag-read.mjs";
+import noEffectEnvAny from "./rules/no-effect-env-any.mjs";
+import noEffectNeverCast from "./rules/no-effect-never-cast.mjs";
 import noEffectRunInEffectVitestTests from "./rules/no-effect-run-in-effect-vitest-tests.mjs";
 import noManualHttpApiOpenApiBridge from "./rules/no-manual-httpapi-openapi-bridge.mjs";
 import noManualOpenApiDocuments from "./rules/no-manual-openapi-documents.mjs";
@@ -19,6 +21,8 @@ export default definePlugin({
     "no-async-effect-vitest-tests": noAsyncEffectVitestTests,
     "no-cross-workspace-relative-imports": noCrossWorkspaceRelativeImports,
     "no-direct-effect-tag-read": noDirectEffectTagRead,
+    "no-effect-env-any": noEffectEnvAny,
+    "no-effect-never-cast": noEffectNeverCast,
     "no-effect-run-in-effect-vitest-tests": noEffectRunInEffectVitestTests,
     "no-manual-httpapi-openapi-bridge": noManualHttpApiOpenApiBridge,
     "no-manual-openapi-documents": noManualOpenApiDocuments,
