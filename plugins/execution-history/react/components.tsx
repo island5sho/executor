@@ -329,8 +329,21 @@ const ExecutionDetailDrawer = (props: {
 
   const handleCopy = useCallback(
     (envelope: ExecutionEnvelope) => {
+      const tryParse = (v: string | null) => {
+        if (v === null) return null;
+        try { return JSON.parse(v); } catch { return v; }
+      };
+      const cleaned = {
+        ...envelope,
+        execution: {
+          ...envelope.execution,
+          resultJson: tryParse(envelope.execution.resultJson),
+          logsJson: tryParse(envelope.execution.logsJson),
+          errorText: envelope.execution.errorText,
+        },
+      };
       void navigator.clipboard
-        .writeText(JSON.stringify(envelope, null, 2))
+        .writeText(JSON.stringify(cleaned, null, 2))
         .then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
