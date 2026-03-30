@@ -298,13 +298,11 @@ function McpSourceForm(props: {
     props.initialValue.auth.kind === "oauth2",
   );
   const [lastDiscoveryKey, setLastDiscoveryKey] = useState<string | null>(
-    props.initialValue.auth.kind === "oauth2"
-      ? buildMcpRemoteConfigKey({
-          transport: transportFields.transport,
-          endpoint: props.initialValue.endpoint ?? "",
-          queryParams: props.initialValue.queryParams,
-        })
-      : null,
+    buildMcpRemoteConfigKey({
+      transport: transportFields.transport,
+      endpoint: props.initialValue.endpoint ?? "",
+      queryParams: props.initialValue.queryParams,
+    }),
   );
   const [oauthConnectionKey, setOauthConnectionKey] = useState<string | null>(
     props.initialValue.auth.kind === "oauth2"
