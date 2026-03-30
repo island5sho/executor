@@ -35,6 +35,7 @@ export {
 export {
   defineExecutorFrontendPlugin,
   defineFrontendPluginRoute,
+  liveFrontendPluginComponent,
   registerExecutorFrontendPlugins,
   type RegisteredFrontendPluginRoute,
 } from "./registry";

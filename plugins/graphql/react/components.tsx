@@ -214,7 +214,7 @@ function GraphqlSourceForm(props: {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Card className="space-y-6 p-6">
+    <div className="space-y-6 rounded-lg border border-border bg-card p-6 text-sm ring-1 ring-foreground/[0.04]">
       <div className="grid gap-4">
         <div className="grid gap-2">
           <Label>Name</Label>
@@ -327,7 +327,7 @@ function GraphqlSourceForm(props: {
             : props.mode === "create" ? "Create Source" : "Save Changes"}
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -341,32 +341,46 @@ export function GraphqlAddPage() {
     { mode: "promise" },
   );
 
+
   if (installation.status !== "ready") {
     return <div className="text-sm text-muted-foreground">Loading workspace...</div>;
   }
 
   return (
-    <GraphqlSourceForm
-      initialValue={initialValue}
-      mode="create"
-      onSubmit={async (input) => {
-        const source = await createSource({
-          path: {
-            workspaceId: installation.data.scopeId,
-          },
-          payload: input,
-          reactivityKeys: {
-            sources: [installation.data.scopeId],
-          },
-        });
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
+        <div className="mb-8">
+          <h1 className="font-display text-2xl tracking-tight text-foreground">
+            Add GraphQL Source
+          </h1>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+            Connect a GraphQL endpoint and expose its operations as tools.
+          </p>
+        </div>
 
-        startTransition(() => {
-          void navigation.detail(source.id, {
-            tab: "model",
-          });
-        });
-      }}
-    />
+        <GraphqlSourceForm
+          initialValue={initialValue}
+          mode="create"
+          onSubmit={async (input) => {
+            const source = await createSource({
+              path: {
+                workspaceId: installation.data.scopeId,
+              },
+              payload: input,
+              reactivityKeys: {
+                sources: [installation.data.scopeId],
+              },
+            });
+
+            startTransition(() => {
+              void navigation.detail(source.id, {
+                tab: "model",
+              });
+            });
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -414,32 +428,45 @@ export function GraphqlEditPage(props: {
   }
 
   return (
-    <GraphqlSourceForm
-      initialValue={configResult.value}
-      mode="edit"
-      onSubmit={async (input) => {
-        const source = await updateSource({
-          path: {
-            workspaceId: installation.data.scopeId,
-            sourceId: props.source.id,
-          },
-          payload: input,
-          reactivityKeys: {
-            sources: [installation.data.scopeId],
-            source: [installation.data.scopeId, props.source.id],
-            sourceInspection: [installation.data.scopeId, props.source.id],
-            sourceInspectionTool: [installation.data.scopeId, props.source.id],
-            sourceDiscovery: [installation.data.scopeId, props.source.id],
-          },
-        });
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
+        <div className="mb-8">
+          <h1 className="font-display text-2xl tracking-tight text-foreground">
+            Edit GraphQL Source
+          </h1>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+            Update the connection settings for {props.source.name}.
+          </p>
+        </div>
 
-        startTransition(() => {
-          void navigation.detail(source.id, {
-            tab: "model",
-          });
-        });
-      }}
-    />
+        <GraphqlSourceForm
+          initialValue={configResult.value}
+          mode="edit"
+          onSubmit={async (input) => {
+            const source = await updateSource({
+              path: {
+                workspaceId: installation.data.scopeId,
+                sourceId: props.source.id,
+              },
+              payload: input,
+              reactivityKeys: {
+                sources: [installation.data.scopeId],
+                source: [installation.data.scopeId, props.source.id],
+                sourceInspection: [installation.data.scopeId, props.source.id],
+                sourceInspectionTool: [installation.data.scopeId, props.source.id],
+                sourceDiscovery: [installation.data.scopeId, props.source.id],
+              },
+            });
+
+            startTransition(() => {
+              void navigation.detail(source.id, {
+                tab: "model",
+              });
+            });
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -542,6 +569,91 @@ function GraphqlDetailExplorer(props: {
   };
 
   const config = Result.isSuccess(configResult) ? configResult.value : null;
+  const sourceNeedsRecovery =
+    props.source.status === "auth_required" || props.source.status === "error";
+
+  if (sourceNeedsRecovery) {
+    const title =
+      props.source.status === "auth_required"
+        ? "Credentials required"
+        : "Source needs attention";
+    const description =
+      props.source.status === "auth_required"
+        ? "This endpoint requires credentials before its schema can be introspected. Edit the source, configure bearer auth, and save again."
+        : "This source could not be indexed successfully. Edit the configuration and save again to rebuild its catalog.";
+
+    return (
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-6 py-10">
+          <Card className="space-y-6 p-6">
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <h1 className="font-display text-2xl tracking-tight text-foreground">
+                  {title}
+                </h1>
+                <Badge variant="outline">{props.source.status}</Badge>
+              </div>
+              <p className="text-sm leading-6 text-muted-foreground">
+                {description}
+              </p>
+            </div>
+
+            {config ? (
+              <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                <span className="font-mono text-foreground">{config.endpoint}</span>
+                <Badge variant="muted">Auth: {config.auth.kind}</Badge>
+              </div>
+            ) : null}
+
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void navigation.edit(props.source.id)}
+              >
+                <IconPencil className="size-3" />
+                Edit
+              </Button>
+              {confirmDelete ? (
+                <>
+                  <span className="text-[11px] font-medium text-destructive">
+                    Confirm delete?
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmDelete(false)}
+                    disabled={isDeleting}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive-outline"
+                    size="sm"
+                    onClick={() => {
+                      void handleDelete().catch(() => {});
+                    }}
+                    disabled={isDeleting}
+                  >
+                    {isDeleting ? "Deleting..." : "Delete"}
+                  </Button>
+                </>
+              ) : (
+                <Button
+                  variant="destructive-outline"
+                  size="sm"
+                  onClick={() => setConfirmDelete(true)}
+                  disabled={isDeleting}
+                >
+                  Delete
+                </Button>
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <SourceToolExplorer
@@ -661,7 +773,7 @@ function GraphqlSourceRoute(props: {
   const sourceId = typeof params.sourceId === "string" ? params.sourceId : null;
   const source = useSource(sourceId ?? "");
 
-  if (sourceId === null || source.status === "error") {
+  if (sourceId === null) {
     return (
       <div className="px-6 py-8 text-sm text-destructive">
         This GraphQL source is unavailable.
@@ -673,6 +785,14 @@ function GraphqlSourceRoute(props: {
     return (
       <div className="px-6 py-8 text-sm text-muted-foreground">
         Loading source...
+      </div>
+    );
+  }
+
+  if (source.status === "error") {
+    return (
+      <div className="px-6 py-8 text-sm text-destructive">
+        Failed loading this GraphQL source.
       </div>
     );
   }

@@ -1,4 +1,7 @@
-import { defineExecutorFrontendPlugin } from "@executor/react/plugins";
+import {
+  defineExecutorFrontendPlugin,
+  liveFrontendPluginComponent,
+} from "@executor/react/plugins";
 
 import {
   GOOGLE_DISCOVERY_PLUGIN_KEY,
@@ -22,17 +25,17 @@ export const GoogleDiscoveryReactPlugin = defineExecutorFrontendPlugin({
     {
       key: "add",
       path: "add",
-      component: GoogleDiscoveryAddPage,
+      component: liveFrontendPluginComponent(() => GoogleDiscoveryAddPage),
     },
     {
       key: "detail",
       path: "sources/$sourceId",
-      component: GoogleDiscoveryDetailRoute,
+      component: liveFrontendPluginComponent(() => GoogleDiscoveryDetailRoute),
     },
     {
       key: "edit",
       path: "sources/$sourceId/edit",
-      component: GoogleDiscoveryEditRoute,
+      component: liveFrontendPluginComponent(() => GoogleDiscoveryEditRoute),
     },
   ],
 });

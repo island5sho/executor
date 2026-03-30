@@ -1,3 +1,7 @@
+import {
+  createElement,
+  type ComponentType,
+} from "react";
 import type {
   ExecutorFrontendPlugin,
   FrontendPluginRouteDefinition,
@@ -22,6 +26,24 @@ export const defineExecutorFrontendPlugin = <
 >(
   input: TPlugin,
 ): TPlugin => input;
+
+// Plugin objects are registered once at module load, so route components need
+// to resolve lazily for React Fast Refresh to see edits inside plugin packages.
+export const liveFrontendPluginComponent = <
+  TProps extends object,
+>(
+  resolveComponent: () => ComponentType<TProps>,
+): ComponentType<TProps> => {
+  const resolvedComponent = resolveComponent();
+
+  const LiveFrontendPluginComponent = (props: TProps) =>
+    createElement(resolveComponent(), props);
+
+  LiveFrontendPluginComponent.displayName =
+    `LiveFrontendPluginComponent(${resolvedComponent.displayName ?? resolvedComponent.name ?? "Anonymous"})`;
+
+  return LiveFrontendPluginComponent;
+};
 
 export const registerExecutorFrontendPlugins = (
   plugins: readonly ExecutorFrontendPlugin[],

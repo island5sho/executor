@@ -1,4 +1,7 @@
-import { defineExecutorFrontendPlugin } from "@executor/react/plugins";
+import {
+  defineExecutorFrontendPlugin,
+  liveFrontendPluginComponent,
+} from "@executor/react/plugins";
 
 import {
   McpAddPage,
@@ -14,17 +17,17 @@ export const McpReactPlugin = defineExecutorFrontendPlugin({
     {
       key: "add",
       path: "add",
-      component: McpAddPage,
+      component: liveFrontendPluginComponent(() => McpAddPage),
     },
     {
       key: "detail",
       path: "sources/$sourceId",
-      component: McpDetailRoute,
+      component: liveFrontendPluginComponent(() => McpDetailRoute),
     },
     {
       key: "edit",
       path: "sources/$sourceId/edit",
-      component: McpEditRoute,
+      component: liveFrontendPluginComponent(() => McpEditRoute),
     },
   ],
 });

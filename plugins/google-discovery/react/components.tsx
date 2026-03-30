@@ -14,7 +14,6 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
   IconPencil,
   Input,
   Label,
@@ -573,7 +572,7 @@ function GoogleDiscoverySourceForm(props: {
   };
 
   return (
-    <Card className="space-y-6 p-6">
+    <div className="space-y-6 rounded-lg border border-border bg-card p-6 text-sm ring-1 ring-foreground/[0.04]">
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="grid gap-2 sm:col-span-2">
           <Label>Name</Label>
@@ -753,7 +752,7 @@ function GoogleDiscoverySourceForm(props: {
             : props.mode === "create" ? "Create Source" : "Save Changes"}
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -857,7 +856,7 @@ function GoogleDiscoveryBatchConnectPanel(props: {
   };
 
   return (
-    <Card className="space-y-6 p-6">
+    <div className="space-y-6 rounded-lg border border-border bg-card p-6 text-sm ring-1 ring-foreground/[0.04]">
       <div>
         <h2 className="text-base font-semibold text-foreground">
           Connect multiple Google APIs
@@ -1008,7 +1007,7 @@ function GoogleDiscoveryBatchConnectPanel(props: {
               : "Connect Google APIs"}
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -1027,51 +1026,64 @@ export function GoogleDiscoveryAddPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <GoogleDiscoveryBatchConnectPanel
-        onConnected={(sources) => {
-          startTransition(() => {
-            if (sources.length === 1) {
-              void navigation.detail(sources[0]!.id, {
-                tab: "model",
-              });
-              return;
-            }
-
-            void navigation.home();
-          });
-        }}
-      />
-
-      <div className="flex items-center gap-3">
-        <Separator className="flex-1" />
-        <div className="text-xs font-medium text-muted-foreground">
-          or add a single API
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
+        <div className="mb-8">
+          <h1 className="font-display text-2xl tracking-tight text-foreground">
+            Add Google API Source
+          </h1>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+            Connect Google Workspace and Cloud APIs via discovery documents.
+          </p>
         </div>
-        <Separator className="flex-1" />
+
+        <div className="space-y-6">
+          <GoogleDiscoveryBatchConnectPanel
+            onConnected={(sources) => {
+              startTransition(() => {
+                if (sources.length === 1) {
+                  void navigation.detail(sources[0]!.id, {
+                    tab: "model",
+                  });
+                  return;
+                }
+
+                void navigation.home();
+              });
+            }}
+          />
+
+          <div className="flex items-center gap-3">
+            <Separator className="flex-1" />
+            <div className="text-xs font-medium text-muted-foreground">
+              or add a single API
+            </div>
+            <Separator className="flex-1" />
+          </div>
+
+          <GoogleDiscoverySourceForm
+            initialValue={initialValue}
+            mode="create"
+            onSubmit={async (input) => {
+              const source = await createSource({
+                path: {
+                  workspaceId: installation.data.scopeId,
+                },
+                payload: input,
+                reactivityKeys: {
+                  sources: [installation.data.scopeId],
+                },
+              });
+
+              startTransition(() => {
+                void navigation.detail(source.id, {
+                  tab: "model",
+                });
+              });
+            }}
+          />
+        </div>
       </div>
-
-      <GoogleDiscoverySourceForm
-        initialValue={initialValue}
-        mode="create"
-        onSubmit={async (input) => {
-          const source = await createSource({
-            path: {
-              workspaceId: installation.data.scopeId,
-            },
-            payload: input,
-            reactivityKeys: {
-              sources: [installation.data.scopeId],
-            },
-          });
-
-          startTransition(() => {
-            void navigation.detail(source.id, {
-              tab: "model",
-            });
-          });
-        }}
-      />
     </div>
   );
 }
@@ -1120,32 +1132,45 @@ export function GoogleDiscoveryEditPage(props: {
   }
 
   return (
-    <GoogleDiscoverySourceForm
-      initialValue={configResult.value}
-      mode="edit"
-      onSubmit={async (input) => {
-        const source = await updateSource({
-          path: {
-            workspaceId: installation.data.scopeId,
-            sourceId: props.source.id,
-          },
-          payload: input,
-          reactivityKeys: {
-            sources: [installation.data.scopeId],
-            source: [installation.data.scopeId, props.source.id],
-            sourceInspection: [installation.data.scopeId, props.source.id],
-            sourceInspectionTool: [installation.data.scopeId, props.source.id],
-            sourceDiscovery: [installation.data.scopeId, props.source.id],
-          },
-        });
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
+        <div className="mb-8">
+          <h1 className="font-display text-2xl tracking-tight text-foreground">
+            Edit Google API Source
+          </h1>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+            Update the connection settings for {props.source.name}.
+          </p>
+        </div>
 
-        startTransition(() => {
-          void navigation.detail(source.id, {
-            tab: "model",
-          });
-        });
-      }}
-    />
+        <GoogleDiscoverySourceForm
+          initialValue={configResult.value}
+          mode="edit"
+          onSubmit={async (input) => {
+            const source = await updateSource({
+              path: {
+                workspaceId: installation.data.scopeId,
+                sourceId: props.source.id,
+              },
+              payload: input,
+              reactivityKeys: {
+                sources: [installation.data.scopeId],
+                source: [installation.data.scopeId, props.source.id],
+                sourceInspection: [installation.data.scopeId, props.source.id],
+                sourceInspectionTool: [installation.data.scopeId, props.source.id],
+                sourceDiscovery: [installation.data.scopeId, props.source.id],
+              },
+            });
+
+            startTransition(() => {
+              void navigation.detail(source.id, {
+                tab: "model",
+              });
+            });
+          }}
+        />
+      </div>
+    </div>
   );
 }
 

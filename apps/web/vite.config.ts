@@ -34,6 +34,20 @@ const workspaceExecutorPackages = Object.keys(webPackage.dependencies ?? {}).fil
   (name) => name.startsWith("@executor/"),
 );
 
+const pluginWorkspaceSegment = `${path.sep}plugins${path.sep}`;
+
+const reloadOnPluginChange = () => ({
+  name: "executor-reload-on-plugin-change",
+  handleHotUpdate({ file, server }: { file: string; server: { hot: { send: (payload: { type: "full-reload" }) => void } } }) {
+    if (!file.includes(pluginWorkspaceSegment)) {
+      return;
+    }
+
+    server.hot.send({ type: "full-reload" });
+    return [];
+  },
+});
+
 export default defineConfig({
   root: "src",
   resolve: {
@@ -42,6 +56,7 @@ export default defineConfig({
     },
   },
   plugins: [
+    reloadOnPluginChange(),
     tailwindcss(),
     react(),
     devServer({

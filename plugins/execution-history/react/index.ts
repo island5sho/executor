@@ -1,5 +1,6 @@
 import {
   defineExecutorFrontendPlugin,
+  liveFrontendPluginComponent,
 } from "@executor/react/plugins";
 
 import {
@@ -14,7 +15,7 @@ export const ExecutionHistoryReactPlugin = defineExecutorFrontendPlugin({
   routes: [
     {
       key: "history",
-      component: ExecutionHistoryPage,
+      component: liveFrontendPluginComponent(() => ExecutionHistoryPage),
       nav: {
         label: "Runs",
         section: "main",
@@ -23,7 +24,7 @@ export const ExecutionHistoryReactPlugin = defineExecutorFrontendPlugin({
     {
       key: "detail",
       path: "$executionId",
-      component: ExecutionHistoryDetailPage,
+      component: liveFrontendPluginComponent(() => ExecutionHistoryDetailPage),
     },
   ],
 });

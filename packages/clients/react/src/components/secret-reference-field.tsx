@@ -80,9 +80,9 @@ export function SecretReferenceField(props: SecretReferenceFieldProps) {
         path: {
           storeId: input.storeId,
         },
-        payload: {
-          ...(input.query?.trim() ? { query: input.query.trim() } : {}),
-        },
+        payload: input.query?.trim()
+          ? { query: input.query.trim() }
+          : {},
       }),
     [browseSecretStoreMutation],
   );

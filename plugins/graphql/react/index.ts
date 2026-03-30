@@ -1,4 +1,7 @@
-import { defineExecutorFrontendPlugin } from "@executor/react/plugins";
+import {
+  defineExecutorFrontendPlugin,
+  liveFrontendPluginComponent,
+} from "@executor/react/plugins";
 
 import {
   GraphqlAddPage,
@@ -15,22 +18,22 @@ export const GraphqlReactPlugin = defineExecutorFrontendPlugin({
     {
       key: "add",
       path: "add",
-      component: GraphqlAddPage,
+      component: liveFrontendPluginComponent(() => GraphqlAddPage),
     },
     {
       key: "detail",
       path: "sources/$sourceId",
-      component: GraphqlDetailRoute,
+      component: liveFrontendPluginComponent(() => GraphqlDetailRoute),
     },
     {
       key: "edit",
       path: "sources/$sourceId/edit",
-      component: GraphqlEditRoute,
+      component: liveFrontendPluginComponent(() => GraphqlEditRoute),
     },
     {
       key: "tool-detail",
       path: "sources/$sourceId/tool/$toolPath",
-      component: GraphqlToolDetailRoute,
+      component: liveFrontendPluginComponent(() => GraphqlToolDetailRoute),
     },
   ],
 });

@@ -15,7 +15,6 @@ import {
 import {
   Alert,
   Button,
-  Card,
   DocumentPanel,
   IconPencil,
   Input,
@@ -149,7 +148,7 @@ const Section = (props: {
   children: ReactNode;
 }) => (
   <section>
-    <h2 className="mb-3 text-sm font-semibold text-foreground">{props.title}</h2>
+    <h2 className="mb-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">{props.title}</h2>
     {props.children}
   </section>
 );
@@ -387,7 +386,7 @@ function OpenApiSourceForm(props: {
   };
 
   return (
-    <Card className="space-y-6 p-6">
+    <div className="space-y-6 rounded-lg border border-border bg-card p-6 text-sm ring-1 ring-foreground/[0.04]">
       <Section title="Connection">
         <div className="grid gap-4">
           <div className="grid gap-2">
@@ -477,59 +476,47 @@ function OpenApiSourceForm(props: {
         </div>
       </Section>
 
-      <Section title="Preview">
-        <div className="flex items-center gap-3">
-          <Button
-            variant="outline"
-            type="button"
-            onClick={() => {
-              void runPreview({ mode: "manual" });
-            }}
-            disabled={previewMutation.status === "pending" || submitMutation.status === "pending"}
-          >
-            {previewMutation.status === "pending" ? "Previewing..." : "Preview Spec"}
-          </Button>
-          {preview && (
-            <div className="text-xs text-muted-foreground">
-              {preview.operationCount} operations
-              {preview.version ? ` · v${preview.version}` : ""}
+      {(preview || previewMutation.status === "pending") && (
+        <Section title="Preview">
+          {previewMutation.status === "pending" ? (
+            <div className="text-xs text-muted-foreground">Loading preview...</div>
+          ) : preview && (
+            <div className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
+                <dt className="font-medium text-foreground">Title</dt>
+                <dd className="text-muted-foreground">{preview.title ?? "—"}</dd>
+                <dt className="font-medium text-foreground">Version</dt>
+                <dd className="text-muted-foreground">{preview.version ?? "—"}</dd>
+                <dt className="font-medium text-foreground">Operations</dt>
+                <dd className="text-muted-foreground">{preview.operationCount}</dd>
+                <dt className="font-medium text-foreground">Base URL</dt>
+                <dd className="font-mono text-muted-foreground">{preview.baseUrl ?? "—"}</dd>
+                {preview.namespace && (
+                  <>
+                    <dt className="font-medium text-foreground">Namespace</dt>
+                    <dd className="text-muted-foreground">{preview.namespace}</dd>
+                  </>
+                )}
+                {preview.securitySchemes.length > 0 && (
+                  <>
+                    <dt className="font-medium text-foreground">Auth</dt>
+                    <dd className="text-muted-foreground">
+                      {preview.securitySchemes
+                        .map((scheme) => `${scheme.name} (${previewSecuritySchemeLabel(scheme)})`)
+                        .join(", ")}
+                    </dd>
+                  </>
+                )}
+              </dl>
+              {preview.warnings.length > 0 && (
+                <Alert variant="warning" className="mt-3 text-xs">
+                  {preview.warnings.join(" ")}
+                </Alert>
+              )}
             </div>
           )}
-        </div>
-        {preview && (
-          <div className="mt-3 rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm">
-            <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
-              <dt className="font-medium text-foreground">Title</dt>
-              <dd className="text-muted-foreground">{preview.title ?? "—"}</dd>
-              <dt className="font-medium text-foreground">Version</dt>
-              <dd className="text-muted-foreground">{preview.version ?? "—"}</dd>
-              <dt className="font-medium text-foreground">Base URL</dt>
-              <dd className="font-mono text-muted-foreground">{preview.baseUrl ?? "—"}</dd>
-              {preview.namespace && (
-                <>
-                  <dt className="font-medium text-foreground">Namespace</dt>
-                  <dd className="text-muted-foreground">{preview.namespace}</dd>
-                </>
-              )}
-              {preview.securitySchemes.length > 0 && (
-                <>
-                  <dt className="font-medium text-foreground">Auth</dt>
-                  <dd className="text-muted-foreground">
-                    {preview.securitySchemes
-                      .map((scheme) => `${scheme.name} (${previewSecuritySchemeLabel(scheme)})`)
-                      .join(", ")}
-                  </dd>
-                </>
-              )}
-            </dl>
-            {preview.warnings.length > 0 && (
-              <Alert variant="warning" className="mt-3 text-xs">
-                {preview.warnings.join(" ")}
-              </Alert>
-            )}
-          </div>
-        )}
-      </Section>
+        </Section>
+      )}
 
       {error && (
         <Alert variant="destructive">
@@ -548,7 +535,7 @@ function OpenApiSourceForm(props: {
           {submitMutation.status === "pending" ? props.busyLabel : props.submitLabel}
         </Button>
       </div>
-    </Card>
+    </div>
   );
 }
 
@@ -564,35 +551,50 @@ export function OpenApiAddSourcePage() {
 
   if (!workspace.enabled) {
     return (
-      <Section title="Add Source">
-        <div className="text-sm text-muted-foreground">Loading workspace...</div>
-      </Section>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-6 py-10">
+          <div className="text-sm text-muted-foreground">Loading workspace...</div>
+        </div>
+      </div>
     );
   }
 
   return (
-    <OpenApiSourceForm
-      mode="create"
-      workspaceId={workspace.workspaceId}
-      initialValue={initialValue}
-      submitLabel="Create Source"
-      busyLabel="Creating..."
-      onSubmit={async (payload) => {
-        const source = await createSource({
-          path: { workspaceId: workspace.workspaceId },
-          payload,
-          reactivityKeys: {
-            sources: [workspace.workspaceId],
-          },
-        });
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
+        <div className="mb-8">
+          <h1 className="font-display text-2xl tracking-tight text-foreground">
+            Add OpenAPI Source
+          </h1>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+            Import operations from an OpenAPI specification as callable tools.
+          </p>
+        </div>
 
-        startTransition(() => {
-          void navigation.detail(source.id, {
-            tab: "model",
-          });
-        });
-      }}
-    />
+        <OpenApiSourceForm
+          mode="create"
+          workspaceId={workspace.workspaceId}
+          initialValue={initialValue}
+          submitLabel="Create Source"
+          busyLabel="Creating..."
+          onSubmit={async (payload) => {
+            const source = await createSource({
+              path: { workspaceId: workspace.workspaceId },
+              payload,
+              reactivityKeys: {
+                sources: [workspace.workspaceId],
+              },
+            });
+
+            startTransition(() => {
+              void navigation.detail(source.id, {
+                tab: "model",
+              });
+            });
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -603,9 +605,11 @@ export function OpenApiEditSourcePage(props: {
 
   if (!workspace.enabled) {
     return (
-      <Section title="Edit Source">
-        <div className="text-sm text-muted-foreground">Loading workspace...</div>
-      </Section>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-6 py-10">
+          <div className="text-sm text-muted-foreground">Loading workspace...</div>
+        </div>
+      </div>
     );
   }
 
@@ -641,53 +645,64 @@ function OpenApiEditSourcePageReady(props: {
   );
 
   if (!Result.isSuccess(configResult)) {
-    if (Result.isFailure(configResult)) {
-      return (
-        <Section title="Edit Source">
-          <Alert variant="destructive">
-            Failed loading source configuration.
-          </Alert>
-        </Section>
-      );
-    }
-
     return (
-      <Section title="Edit Source">
-        <div className="text-sm text-muted-foreground">Loading configuration...</div>
-      </Section>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto w-full max-w-3xl px-6 py-10">
+          {Result.isFailure(configResult) ? (
+            <Alert variant="destructive">
+              Failed loading source configuration.
+            </Alert>
+          ) : (
+            <div className="text-sm text-muted-foreground">Loading configuration...</div>
+          )}
+        </div>
+      </div>
     );
   }
 
   return (
-    <OpenApiSourceForm
-      mode="edit"
-      workspaceId={props.workspaceId}
-      initialValue={inputFromConfig(configResult.value)}
-      submitLabel="Save Changes"
-      busyLabel="Saving..."
-      onSubmit={async (config) => {
-        const source = await updateSource({
-          path: {
-            workspaceId: props.workspaceId,
-            sourceId: props.source.id,
-          },
-          payload: config,
-          reactivityKeys: {
-            sources: [props.workspaceId],
-            source: [props.workspaceId, props.source.id],
-            sourceInspection: [props.workspaceId, props.source.id],
-            sourceInspectionTool: [props.workspaceId, props.source.id],
-            sourceDiscovery: [props.workspaceId, props.source.id],
-          },
-        });
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
+        <div className="mb-8">
+          <h1 className="font-display text-2xl tracking-tight text-foreground">
+            Edit OpenAPI Source
+          </h1>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+            Update the connection settings for {props.source.name}.
+          </p>
+        </div>
 
-        startTransition(() => {
-          void navigation.detail(source.id, {
-            tab: "model",
-          });
-        });
-      }}
-    />
+        <OpenApiSourceForm
+          mode="edit"
+          workspaceId={props.workspaceId}
+          initialValue={inputFromConfig(configResult.value)}
+          submitLabel="Save Changes"
+          busyLabel="Saving..."
+          onSubmit={async (config) => {
+            const source = await updateSource({
+              path: {
+                workspaceId: props.workspaceId,
+                sourceId: props.source.id,
+              },
+              payload: config,
+              reactivityKeys: {
+                sources: [props.workspaceId],
+                source: [props.workspaceId, props.source.id],
+                sourceInspection: [props.workspaceId, props.source.id],
+                sourceInspectionTool: [props.workspaceId, props.source.id],
+                sourceDiscovery: [props.workspaceId, props.source.id],
+              },
+            });
+
+            startTransition(() => {
+              void navigation.detail(source.id, {
+                tab: "model",
+              });
+            });
+          }}
+        />
+      </div>
+    </div>
   );
 }
 

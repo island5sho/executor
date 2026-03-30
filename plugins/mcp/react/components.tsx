@@ -13,12 +13,7 @@ import {
   Alert,
   Badge,
   Button,
-  Card,
-  cn,
-  IconCheck,
   IconPencil,
-  IconSearch,
-  IconSpinner,
   Input,
   Label,
   Select,
@@ -36,8 +31,6 @@ import {
 } from "@executor/plugin-mcp-http";
 import {
   type McpConnectInput,
-  type McpDiscoverInput,
-  type McpDiscoverResult,
   type McpConnectionAuth,
   type McpOAuthPopupResult,
   type McpStartOAuthInput,
@@ -77,82 +70,6 @@ const defaultMcpInput = (): McpConnectInput => ({
     kind: "none",
   },
 });
-
-type McpQuickPreset = {
-  id: string;
-  name: string;
-  summary: string;
-  input: McpConnectInput;
-};
-
-type ProbeAuthState = {
-  kind: NonNullable<McpDiscoverInput["probeAuth"]>["kind"];
-  token: string;
-  headerName: string;
-  prefix: string;
-  username: string;
-  password: string;
-  headersText: string;
-};
-
-const defaultProbeAuthState = (): ProbeAuthState => ({
-  kind: "none",
-  token: "",
-  headerName: "Authorization",
-  prefix: "Bearer ",
-  username: "",
-  password: "",
-  headersText: "",
-});
-
-const mcpQuickPresets: ReadonlyArray<McpQuickPreset> = [
-  {
-    id: "deepwiki-mcp",
-    name: "DeepWiki MCP",
-    summary: "Repository docs and knowledge graphs via a remote MCP endpoint.",
-    input: {
-      ...defaultMcpInput(),
-      name: "DeepWiki MCP",
-      endpoint: "https://mcp.deepwiki.com/mcp",
-      transport: "auto",
-    },
-  },
-  {
-    id: "axiom-mcp",
-    name: "Axiom MCP",
-    summary: "Query and analyze logs and traces through Axiom's MCP server.",
-    input: {
-      ...defaultMcpInput(),
-      name: "Axiom MCP",
-      endpoint: "https://mcp.axiom.co/mcp",
-      transport: "auto",
-    },
-  },
-  {
-    id: "neon-mcp",
-    name: "Neon MCP",
-    summary: "Manage databases, branches, and queries via Neon MCP.",
-    input: {
-      ...defaultMcpInput(),
-      name: "Neon MCP",
-      endpoint: "https://mcp.neon.tech/mcp",
-      transport: "auto",
-    },
-  },
-  {
-    id: "chrome-devtools-mcp",
-    name: "Chrome DevTools MCP",
-    summary: "Launch the local Chrome DevTools MCP server over stdio.",
-    input: {
-      ...defaultMcpInput(),
-      name: "Chrome DevTools MCP",
-      endpoint: null,
-      transport: "stdio",
-      command: "npx",
-      args: ["-y", "chrome-devtools-mcp@latest"],
-    },
-  },
-];
 
 const presetString = (
   search: Record<string, unknown>,
@@ -250,49 +167,6 @@ const transportFieldsFromInput = (input: McpConnectInput): McpTransportFields =>
         headersText: stringifyStringMap(input.headers),
       };
 
-const buildProbeAuth = (
-  state: ProbeAuthState,
-): McpDiscoverInput["probeAuth"] => {
-  if (state.kind === "none") {
-    return { kind: "none" };
-  }
-
-  if (state.kind === "bearer") {
-    if (!state.token.trim()) {
-      throw new Error("Token is required for bearer discovery auth.");
-    }
-
-    return {
-      kind: "bearer",
-      headerName: state.headerName.trim() || null,
-      prefix: state.prefix.length > 0 ? state.prefix : null,
-      token: state.token.trim(),
-    };
-  }
-
-  if (state.kind === "basic") {
-    if (!state.username.trim()) {
-      throw new Error("Username is required for basic discovery auth.");
-    }
-
-    return {
-      kind: "basic",
-      username: state.username.trim(),
-      password: state.password,
-    };
-  }
-
-  const headers = parseJsonStringMap("Discovery headers", state.headersText);
-  if (!headers) {
-    throw new Error("At least one discovery header is required.");
-  }
-
-  return {
-    kind: "headers",
-    headers,
-  };
-};
-
 const waitForOauthPopupResult = async (
   sessionId: string,
 ): Promise<McpOAuthPopupResult> =>
@@ -387,10 +261,6 @@ function McpSourceForm(props: {
 }) {
   const installation = useLocalInstallation();
   const client = getMcpHttpClient();
-  const discoverSource = useAtomSet(
-    client.mutation("mcp", "discoverSource"),
-    { mode: "promise" },
-  );
   const startOAuth = useAtomSet(
     client.mutation("mcp", "startOAuth"),
     { mode: "promise" },
@@ -415,103 +285,8 @@ function McpSourceForm(props: {
     props.initialValue.auth.kind === "oauth2" ? "connected" : "idle",
   );
   const [error, setError] = useState<string | null>(null);
-  const [discoveryEndpoint, setDiscoveryEndpoint] = useState(
-    props.initialValue.command ? "" : (props.initialValue.endpoint ?? ""),
-  );
-  const [showProbeAuth, setShowProbeAuth] = useState(false);
-  const [probeAuth, setProbeAuth] = useState<ProbeAuthState>(defaultProbeAuthState);
-  const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
-  const discoverMutation = useExecutorMutation<McpDiscoverInput, McpDiscoverResult>(
-    async (input) => {
-      if (installation.status !== "ready") {
-        throw new Error("Workspace is still loading.");
-      }
-
-      return discoverSource({
-        path: {
-          workspaceId: installation.data.scopeId,
-        },
-        payload: input,
-      });
-    },
-  );
 
   const isStdio = transportFields.transport === "stdio";
-
-  const applyPreset = (preset: McpQuickPreset) => {
-    setName(preset.input.name);
-    setEndpoint(preset.input.endpoint ?? "");
-    setTransportFields(transportFieldsFromInput(preset.input));
-    setAuthKind(preset.input.auth.kind);
-    setOauthAuth(preset.input.auth.kind === "oauth2" ? preset.input.auth : null);
-    setOauthStatus(preset.input.auth.kind === "oauth2" ? "connected" : "idle");
-    setDiscoveryEndpoint(preset.input.endpoint ?? "");
-    setDiscoveryMessage(`Loaded ${preset.name}.`);
-    setError(null);
-  };
-
-  const applyDiscoveredRemoteSource = (result: NonNullable<McpDiscoverResult>) => {
-    const remoteTransport =
-      result.transport === "streamable-http" ||
-      result.transport === "sse" ||
-      result.transport === "auto"
-        ? result.transport
-        : "auto";
-
-    setName(result.name?.trim() || name);
-    setEndpoint(result.endpoint);
-    setTransportFields({
-      ...defaultMcpRemoteTransportFields(remoteTransport),
-      queryParamsText:
-        transportFields.transport === "stdio" ? "" : transportFields.queryParamsText,
-      headersText:
-        transportFields.transport === "stdio" ? "" : transportFields.headersText,
-    });
-    if (result.authInference.supported && result.authInference.suggestedKind === "oauth2") {
-      setAuthKind("oauth2");
-      setDiscoveryMessage(
-        result.warnings[0]
-          ?? "The server advertised OAuth during discovery. Connect OAuth before saving.",
-      );
-    } else {
-      setAuthKind("none");
-      setOauthAuth(null);
-      setOauthStatus("idle");
-      setDiscoveryMessage(
-        result.warnings[0]
-          ?? `Discovered ${result.toolCount ?? "unknown"} MCP tools and prefilled the connection.`,
-      );
-    }
-    setError(null);
-  };
-
-  const handleDiscover = async () => {
-    if (installation.status !== "ready") {
-      setError("Workspace is still loading.");
-      return;
-    }
-
-    setError(null);
-    setDiscoveryMessage(null);
-
-    try {
-      const result = await discoverMutation.mutateAsync({
-        endpoint: discoveryEndpoint.trim(),
-        probeAuth: showProbeAuth ? buildProbeAuth(probeAuth) : { kind: "none" },
-      });
-
-      if (result === null) {
-        setDiscoveryMessage(
-          "Could not verify this endpoint as MCP. You can still continue with manual setup.",
-        );
-        return;
-      }
-
-      applyDiscoveredRemoteSource(result);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    }
-  };
 
   const runOauth = async () => {
     if (installation.status !== "ready") {
@@ -591,382 +366,218 @@ function McpSourceForm(props: {
 
   return (
     <div className="space-y-8">
-      {props.mode === "create" && (
-        <Card className="p-6">
-          <div className="text-sm font-medium text-foreground">Presets</div>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {mcpQuickPresets.map((preset) => {
-              const selected =
-                preset.input.transport === "stdio"
-                  ? transportFields.transport === "stdio"
-                    && transportFields.command === (preset.input.command ?? "")
-                  : !isStdio && endpoint.trim() === (preset.input.endpoint ?? "");
-
-              return (
-                <Button
-                  key={preset.id}
-                  type="button"
-                  variant="outline"
-                  onClick={() => applyPreset(preset)}
-                  className={cn(
-                    "h-auto flex-col items-start px-4 py-3 text-left",
-                    selected && "border-primary/30 bg-primary/5",
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    {selected ? <IconCheck className="size-3.5 text-primary" /> : null}
-                    <div className="text-sm font-medium text-foreground">{preset.name}</div>
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">{preset.summary}</div>
-                </Button>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-
-      {props.mode === "create" && (
-        <Card className="p-6">
-          <div>
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-sm font-medium text-foreground">Discover</div>
-              <Button
-                variant="ghost"
-                onClick={() => setShowProbeAuth((current) => !current)}
-                className="text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {showProbeAuth ? "Hide auth" : "Need auth?"}
-              </Button>
-            </div>
-
-            <div className="mt-2 flex flex-col gap-3 sm:flex-row">
-              <Input
-                value={discoveryEndpoint}
-                onChange={(event) => setDiscoveryEndpoint(event.target.value)}
-                placeholder="https://mcp.example.com/mcp"
-                className="flex-1 font-mono text-xs"
-              />
-              <Button
-                variant="outline"
-                onClick={() => {
-                  void handleDiscover();
-                }}
-                disabled={discoverMutation.status === "pending"}
-              >
-                {discoverMutation.status === "pending"
-                  ? <IconSpinner className="size-3.5" />
-                  : <IconSearch className="size-3.5" />}
-                {discoverMutation.status === "pending" ? "Discovering..." : "Discover"}
-              </Button>
-            </div>
-
-            {showProbeAuth && (
-              <div className="mt-3 space-y-3 rounded-lg border border-border bg-muted/20 p-4">
-                <div className="grid gap-2">
-                  <Label>Discovery auth</Label>
-                  <Select
-                    value={probeAuth.kind}
-                    onChange={(event) =>
-                      setProbeAuth((current) => ({
-                        ...current,
-                        kind: event.target.value as ProbeAuthState["kind"],
-                      }))}
-                  >
-                    <option value="none">None</option>
-                    <option value="bearer">Bearer</option>
-                    <option value="basic">Basic</option>
-                    <option value="headers">Custom headers</option>
-                  </Select>
-                </div>
-
-                {probeAuth.kind === "bearer" && (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label>Header name</Label>
-                      <Input
-                        value={probeAuth.headerName}
-                        onChange={(event) =>
-                          setProbeAuth((current) => ({ ...current, headerName: event.target.value }))}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Prefix</Label>
-                      <Input
-                        value={probeAuth.prefix}
-                        onChange={(event) =>
-                          setProbeAuth((current) => ({ ...current, prefix: event.target.value }))}
-                      />
-                    </div>
-                    <div className="grid gap-2 md:col-span-2">
-                      <Label>Token</Label>
-                      <Input
-                        value={probeAuth.token}
-                        onChange={(event) =>
-                          setProbeAuth((current) => ({ ...current, token: event.target.value }))}
-                        className="font-mono text-xs"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {probeAuth.kind === "basic" && (
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="grid gap-2">
-                      <Label>Username</Label>
-                      <Input
-                        value={probeAuth.username}
-                        onChange={(event) =>
-                          setProbeAuth((current) => ({ ...current, username: event.target.value }))}
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label>Password</Label>
-                      <Input
-                        value={probeAuth.password}
-                        onChange={(event) =>
-                          setProbeAuth((current) => ({ ...current, password: event.target.value }))}
-                        type="password"
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {probeAuth.kind === "headers" && (
-                  <div className="grid gap-2">
-                    <Label>Headers JSON</Label>
-                    <Textarea
-                      value={probeAuth.headersText}
-                      onChange={(event) =>
-                        setProbeAuth((current) => ({ ...current, headersText: event.target.value }))}
-                      rows={3}
-                      placeholder='{"x-api-key":"..."}'
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-
-            {discoveryMessage && (
-              <div className="mt-2 text-xs text-muted-foreground">
-                {discoveryMessage}
-              </div>
-            )}
-          </div>
-        </Card>
-      )}
-
-      <Card className="space-y-6 p-6">
-      <div className="grid gap-2">
-        <Label>Name</Label>
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-        />
-      </div>
-
-      <div className="grid gap-2">
-        <Label>Transport</Label>
-        <Select
-          value={transportFields.transport}
-          onChange={(event) => {
-            const nextTransport = event.target.value as McpTransportValue;
-            setTransportFields((current) =>
-              setMcpTransportFieldsTransport(current, nextTransport)
-            );
-            if (nextTransport === "stdio") {
-              setAuthKind("none");
-              setOauthAuth(null);
-              setOauthStatus("idle");
-            }
-          }}
-        >
-          <option value="">Auto (remote)</option>
-          <option value="auto">Auto</option>
-          <option value="streamable-http">Streamable HTTP</option>
-          <option value="sse">SSE</option>
-          <option value="stdio">stdio</option>
-        </Select>
-      </div>
-
-      {isStdio ? (
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="grid gap-2 md:col-span-2">
-            <Label>Command</Label>
-            <Input
-              value={transportFields.command}
-              onChange={(event) =>
-                setTransportFields({
-                  ...transportFields,
-                  command: event.target.value,
-                })}
-              className="font-mono text-xs"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Args</Label>
-            <Textarea
-              value={transportFields.argsText}
-              onChange={(event) =>
-                setTransportFields({
-                  ...transportFields,
-                  argsText: event.target.value,
-                })}
-              rows={3}
-              placeholder='["server.js","--port","8787"]'
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Environment</Label>
-            <Textarea
-              value={transportFields.envText}
-              onChange={(event) =>
-                setTransportFields({
-                  ...transportFields,
-                  envText: event.target.value,
-                })}
-              rows={3}
-              placeholder='{"NODE_ENV":"production"}'
-            />
-          </div>
-
-          <div className="grid gap-2 md:col-span-2">
-            <Label>Working Directory</Label>
-            <Input
-              value={transportFields.cwd}
-              onChange={(event) =>
-                setTransportFields({
-                  ...transportFields,
-                  cwd: event.target.value,
-                })}
-              className="font-mono text-xs"
-            />
-          </div>
-        </div>
-      ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="grid gap-2 md:col-span-2">
-            <Label>Endpoint</Label>
-            <Input
-              value={endpoint}
-              onChange={(event) => setEndpoint(event.target.value)}
-              className="font-mono text-xs"
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Query Params</Label>
-            <Textarea
-              value={transportFields.queryParamsText}
-              onChange={(event) =>
-                setTransportFields({
-                  ...transportFields,
-                  queryParamsText: event.target.value,
-                })}
-              rows={3}
-              placeholder='{"transport":"streamable-http"}'
-            />
-          </div>
-
-          <div className="grid gap-2">
-            <Label>Headers</Label>
-            <Textarea
-              value={transportFields.headersText}
-              onChange={(event) =>
-                setTransportFields({
-                  ...transportFields,
-                  headersText: event.target.value,
-                })}
-              rows={3}
-              placeholder='{"x-api-key":"..."}'
-            />
-          </div>
-        </div>
-      )}
-
-      {!isStdio && (
+      <div className="space-y-6 rounded-lg border border-border bg-card p-6 text-sm ring-1 ring-foreground/[0.04]">
         <div className="grid gap-2">
-          <Label>Auth</Label>
+          <Label>Name</Label>
+          <Input
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+          />
+        </div>
+
+        <div className="grid gap-2">
+          <Label>Transport</Label>
           <Select
-            value={authKind}
+            value={transportFields.transport}
             onChange={(event) => {
-              const nextKind = event.target.value as McpConnectionAuth["kind"];
-              setAuthKind(nextKind);
-              if (nextKind !== "oauth2") {
+              const nextTransport = event.target.value as McpTransportValue;
+              setTransportFields((current) =>
+                setMcpTransportFieldsTransport(current, nextTransport)
+              );
+              if (nextTransport === "stdio") {
+                setAuthKind("none");
                 setOauthAuth(null);
                 setOauthStatus("idle");
               }
             }}
           >
-            <option value="none">None</option>
-            <option value="oauth2">OAuth 2.0</option>
+            <option value="">Auto (remote)</option>
+            <option value="auto">Auto</option>
+            <option value="streamable-http">Streamable HTTP</option>
+            <option value="sse">SSE</option>
+            <option value="stdio">stdio</option>
           </Select>
         </div>
-      )}
 
-      {!isStdio && authKind === "oauth2" && (
-        <div className="rounded-lg border border-border bg-muted/20 p-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-sm font-medium text-foreground">OAuth</div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                Authenticate with the MCP server's built-in OAuth flow.
-              </div>
+        {isStdio ? (
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2 md:col-span-2">
+              <Label>Command</Label>
+              <Input
+                value={transportFields.command}
+                onChange={(event) =>
+                  setTransportFields({
+                    ...transportFields,
+                    command: event.target.value,
+                  })}
+                className="font-mono text-xs"
+              />
             </div>
-            <Button
-              variant="outline"
-              onClick={() => {
-                setError(null);
-                setOauthStatus("pending");
-                void runOauth()
-                  .catch((cause) => {
-                    setOauthStatus("idle");
-                    setError(
-                      cause instanceof Error ? cause.message : String(cause),
-                    );
-                  });
+
+            <div className="grid gap-2">
+              <Label>Args</Label>
+              <Textarea
+                value={transportFields.argsText}
+                onChange={(event) =>
+                  setTransportFields({
+                    ...transportFields,
+                    argsText: event.target.value,
+                  })}
+                rows={3}
+                placeholder='["server.js","--port","8787"]'
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Environment</Label>
+              <Textarea
+                value={transportFields.envText}
+                onChange={(event) =>
+                  setTransportFields({
+                    ...transportFields,
+                    envText: event.target.value,
+                  })}
+                rows={3}
+                placeholder='{"NODE_ENV":"production"}'
+              />
+            </div>
+
+            <div className="grid gap-2 md:col-span-2">
+              <Label>Working Directory</Label>
+              <Input
+                value={transportFields.cwd}
+                onChange={(event) =>
+                  setTransportFields({
+                    ...transportFields,
+                    cwd: event.target.value,
+                  })}
+                className="font-mono text-xs"
+              />
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-2 md:col-span-2">
+              <Label>Endpoint</Label>
+              <Input
+                value={endpoint}
+                onChange={(event) => setEndpoint(event.target.value)}
+                className="font-mono text-xs"
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Query Params</Label>
+              <Textarea
+                value={transportFields.queryParamsText}
+                onChange={(event) =>
+                  setTransportFields({
+                    ...transportFields,
+                    queryParamsText: event.target.value,
+                  })}
+                rows={3}
+                placeholder='{"transport":"streamable-http"}'
+              />
+            </div>
+
+            <div className="grid gap-2">
+              <Label>Headers</Label>
+              <Textarea
+                value={transportFields.headersText}
+                onChange={(event) =>
+                  setTransportFields({
+                    ...transportFields,
+                    headersText: event.target.value,
+                  })}
+                rows={3}
+                placeholder='{"x-api-key":"..."}'
+              />
+            </div>
+          </div>
+        )}
+
+        {!isStdio && (
+          <div className="grid gap-2">
+            <Label>Auth</Label>
+            <Select
+              value={authKind}
+              onChange={(event) => {
+                const nextKind = event.target.value as McpConnectionAuth["kind"];
+                setAuthKind(nextKind);
+                if (nextKind !== "oauth2") {
+                  setOauthAuth(null);
+                  setOauthStatus("idle");
+                }
               }}
             >
-              {oauthStatus === "connected" ? "Reconnect OAuth" : "Connect OAuth"}
-            </Button>
+              <option value="none">None</option>
+              <option value="oauth2">OAuth 2.0</option>
+            </Select>
           </div>
-          {oauthStatus === "connected" && (
-            <div className="mt-3 text-xs text-primary">
-              Connected
+        )}
+
+        {!isStdio && authKind === "oauth2" && (
+          <div className="rounded-lg border border-border bg-muted/20 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <div className="text-sm font-medium text-foreground">OAuth</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  Authenticate with the MCP server's built-in OAuth flow.
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setError(null);
+                  setOauthStatus("pending");
+                  void runOauth()
+                    .catch((cause) => {
+                      setOauthStatus("idle");
+                      setError(
+                        cause instanceof Error ? cause.message : String(cause),
+                      );
+                    });
+                }}
+              >
+                {oauthStatus === "connected" ? "Reconnect OAuth" : "Connect OAuth"}
+              </Button>
             </div>
-          )}
+            {oauthStatus === "connected" && (
+              <div className="mt-3 text-xs text-primary">
+                Connected
+              </div>
+            )}
+          </div>
+        )}
+
+        {error && (
+          <Alert variant="destructive">
+            {error}
+          </Alert>
+        )}
+
+        <div className="flex items-center justify-end gap-3">
+          <Button
+            onClick={() => {
+              setError(null);
+              void submitMutation
+                .mutateAsync(buildInput())
+                .catch((cause: unknown) =>
+                  setError(cause instanceof Error ? cause.message : String(cause))
+                );
+            }}
+            disabled={submitMutation.status === "pending"}
+          >
+            {submitMutation.status === "pending"
+              ? props.mode === "create"
+                ? "Creating..."
+                : "Saving..."
+              : props.mode === "create"
+                ? "Create Source"
+                : "Save Changes"}
+          </Button>
         </div>
-      )}
-
-      {error && (
-        <Alert variant="destructive">
-          {error}
-        </Alert>
-      )}
-
-      <div className="flex items-center justify-end gap-3">
-        <Button
-          onClick={() => {
-            setError(null);
-            void submitMutation
-              .mutateAsync(buildInput())
-              .catch((cause: unknown) =>
-                setError(cause instanceof Error ? cause.message : String(cause))
-              );
-          }}
-          disabled={submitMutation.status === "pending"}
-        >
-          {submitMutation.status === "pending"
-            ? props.mode === "create"
-              ? "Creating..."
-              : "Saving..."
-            : props.mode === "create"
-              ? "Create Source"
-              : "Save Changes"}
-        </Button>
       </div>
-      </Card>
     </div>
   );
 }
@@ -986,27 +597,40 @@ export function McpAddPage() {
   }
 
   return (
-    <McpSourceForm
-      initialValue={initialValue}
-      mode="create"
-      onSubmit={async (input) => {
-        const source = await createSource({
-          path: {
-            workspaceId: installation.data.scopeId,
-          },
-          payload: input,
-          reactivityKeys: {
-            sources: [installation.data.scopeId],
-          },
-        });
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
+        <div className="mb-8">
+          <h1 className="font-display text-2xl tracking-tight text-foreground">
+            Add MCP Source
+          </h1>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+            Connect a Model Context Protocol server and import its tools.
+          </p>
+        </div>
 
-        startTransition(() => {
-          void navigation.detail(source.id, {
-            tab: "model",
-          });
-        });
-      }}
-    />
+        <McpSourceForm
+          initialValue={initialValue}
+          mode="create"
+          onSubmit={async (input) => {
+            const source = await createSource({
+              path: {
+                workspaceId: installation.data.scopeId,
+              },
+              payload: input,
+              reactivityKeys: {
+                sources: [installation.data.scopeId],
+              },
+            });
+
+            startTransition(() => {
+              void navigation.detail(source.id, {
+                tab: "model",
+              });
+            });
+          }}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -1054,32 +678,45 @@ export function McpEditPage(props: {
   }
 
   return (
-    <McpSourceForm
-      initialValue={configResult.value}
-      mode="edit"
-      onSubmit={async (input) => {
-        const source = await updateSource({
-          path: {
-            workspaceId: installation.data.scopeId,
-            sourceId: props.source.id,
-          },
-          payload: input,
-          reactivityKeys: {
-            sources: [installation.data.scopeId],
-            source: [installation.data.scopeId, props.source.id],
-            sourceInspection: [installation.data.scopeId, props.source.id],
-            sourceInspectionTool: [installation.data.scopeId, props.source.id],
-            sourceDiscovery: [installation.data.scopeId, props.source.id],
-          },
-        });
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
+        <div className="mb-8">
+          <h1 className="font-display text-2xl tracking-tight text-foreground">
+            Edit MCP Source
+          </h1>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+            Update the connection settings for {props.source.name}.
+          </p>
+        </div>
 
-        startTransition(() => {
-          void navigation.detail(source.id, {
-            tab: "model",
-          });
-        });
-      }}
-    />
+        <McpSourceForm
+          initialValue={configResult.value}
+          mode="edit"
+          onSubmit={async (input) => {
+            const source = await updateSource({
+              path: {
+                workspaceId: installation.data.scopeId,
+                sourceId: props.source.id,
+              },
+              payload: input,
+              reactivityKeys: {
+                sources: [installation.data.scopeId],
+                source: [installation.data.scopeId, props.source.id],
+                sourceInspection: [installation.data.scopeId, props.source.id],
+                sourceInspectionTool: [installation.data.scopeId, props.source.id],
+                sourceDiscovery: [installation.data.scopeId, props.source.id],
+              },
+            });
+
+            startTransition(() => {
+              void navigation.detail(source.id, {
+                tab: "model",
+              });
+            });
+          }}
+        />
+      </div>
+    </div>
   );
 }
 

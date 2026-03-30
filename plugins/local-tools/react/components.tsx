@@ -9,7 +9,6 @@ import {
 import {
   Alert,
   Button,
-  Card,
   SourceToolExplorer,
   parseSourceToolExplorerSearch,
   useSourcePluginNavigation,
@@ -118,52 +117,54 @@ export function LocalToolsAddPage() {
   ) ?? null;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-6 py-10">
-      <Card className="p-6">
-        <h1 className="font-display text-2xl tracking-tight text-foreground">
-          Local Tools
-        </h1>
-        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Promote file-backed tools in <code className="rounded bg-muted px-1 py-0.5 font-mono">.executor/tools</code>
-          {" "}into a first-class source with inspection and discovery.
-        </p>
-
-        <Card className="mt-6 bg-background/60 p-4 text-sm text-muted-foreground">
-          <p>
-            The source is provisioned automatically when the executor session starts and finds
-            local tool files in <code className="rounded bg-muted px-1 py-0.5 font-mono">.executor/tools</code>.
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="mx-auto w-full max-w-3xl px-6 py-10">
+        <div className="mb-8">
+          <h1 className="font-display text-2xl tracking-tight text-foreground">
+            Local Tools
+          </h1>
+          <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+            File-backed tools from <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">.executor/tools</code> promoted into a first-class source.
           </p>
-          <p className="mt-3">
-            Existing tool path behavior is preserved, so a file like
-            {" "}<code className="rounded bg-muted px-1 py-0.5 font-mono">.executor/tools/demo.ts</code>
-            {" "}still appears as <code className="rounded bg-muted px-1 py-0.5 font-mono">tools.demo(...)</code>.
-          </p>
-        </Card>
-
-        <div className="mt-6 flex flex-wrap items-center gap-3">
-          {localToolsSource ? (
-            <Button
-              size="lg"
-              type="button"
-              onClick={() => {
-                startTransition(() => {
-                  void navigation.detail(localToolsSource.id, {
-                    tab: "model",
-                  });
-                });
-              }}
-            >
-              Open Local Tools Source
-            </Button>
-          ) : (
-            <Alert variant="warning">
-              No local tools source is active yet. Create a tool in
-              {" "}<code className="rounded bg-muted px-1 py-0.5 font-mono">.executor/tools</code>
-              {" "}and restart the executor session.
-            </Alert>
-          )}
         </div>
-      </Card>
+
+        <div className="space-y-6 rounded-lg border border-border bg-card p-6 text-sm ring-1 ring-foreground/[0.04]">
+          <div className="rounded-lg border border-border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
+            <p>
+              The source is provisioned automatically when the executor session starts and finds
+              local tool files in <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">.executor/tools</code>.
+            </p>
+            <p className="mt-3">
+              Existing tool path behavior is preserved, so a file like
+              {" "}<code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">.executor/tools/demo.ts</code>
+              {" "}still appears as <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">tools.demo(...)</code>.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-3">
+            {localToolsSource ? (
+              <Button
+                type="button"
+                onClick={() => {
+                  startTransition(() => {
+                    void navigation.detail(localToolsSource.id, {
+                      tab: "model",
+                    });
+                  });
+                }}
+              >
+                Open Local Tools Source
+              </Button>
+            ) : (
+              <Alert variant="warning">
+                No local tools source is active yet. Create a tool in
+                {" "}<code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">.executor/tools</code>
+                {" "}and restart the executor session.
+              </Alert>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

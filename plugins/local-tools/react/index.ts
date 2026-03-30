@@ -1,4 +1,7 @@
-import { defineExecutorFrontendPlugin } from "@executor/react/plugins";
+import {
+  defineExecutorFrontendPlugin,
+  liveFrontendPluginComponent,
+} from "@executor/react/plugins";
 
 import {
   LocalToolsAddPage,
@@ -13,12 +16,12 @@ export const LocalToolsReactPlugin = defineExecutorFrontendPlugin({
     {
       key: "add",
       path: "add",
-      component: LocalToolsAddPage,
+      component: liveFrontendPluginComponent(() => LocalToolsAddPage),
     },
     {
       key: "detail",
       path: "sources/$sourceId",
-      component: LocalToolsDetailRoute,
+      component: liveFrontendPluginComponent(() => LocalToolsDetailRoute),
     },
   ],
 });

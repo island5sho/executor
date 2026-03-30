@@ -1,4 +1,7 @@
-import { defineExecutorFrontendPlugin } from "@executor/react/plugins";
+import {
+  defineExecutorFrontendPlugin,
+  liveFrontendPluginComponent,
+} from "@executor/react/plugins";
 
 import {
   OpenApiAddSourcePage,
@@ -13,17 +16,17 @@ export const OpenApiReactPlugin = defineExecutorFrontendPlugin({
     {
       key: "add",
       path: "add",
-      component: OpenApiAddSourcePage,
+      component: liveFrontendPluginComponent(() => OpenApiAddSourcePage),
     },
     {
       key: "detail",
       path: "sources/$sourceId",
-      component: OpenApiDetailRoute,
+      component: liveFrontendPluginComponent(() => OpenApiDetailRoute),
     },
     {
       key: "edit",
       path: "sources/$sourceId/edit",
-      component: OpenApiEditRoute,
+      component: liveFrontendPluginComponent(() => OpenApiEditRoute),
     },
   ],
 });

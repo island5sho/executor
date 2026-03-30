@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { Button } from "@executor/react/plugins";
 import { CodeBlock } from "./code-block";
-import { cn } from "../lib/utils";
 
 type LocalMcpInstallMode = "stdio" | "http";
 
