@@ -1,0 +1,42 @@
+{
+  "name": "@executor/plugin-onepassword",
+  "private": true,
+  "type": "module",
+  "version": "0.0.0",
+  "exports": {
+    ".": "./src/sdk/index.ts",
+    "./api": "./src/api/index.ts",
+    "./react": "./src/react/index.ts"
+  },
+  "scripts": {
+    "typecheck": "bunx tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@1password/sdk": "^0.4.1-beta.1",
+    "@executor/api": "workspace:*",
+    "@executor/sdk": "workspace:*",
+    "effect": "catalog:",
+    "@effect/platform": "catalog:",
+    "@effect-atom/atom-react": "^0.5.0"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "bun-types": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "@effect-atom/atom-react": "^0.5.0",
+    "@executor/react": "workspace:*",
+    "@executor/ui": "workspace:*"
+  },
+  "peerDependenciesMeta": {
+    "react": { "optional": true },
+    "@effect-atom/atom-react": { "optional": true },
+    "@executor/react": { "optional": true },
+    "@executor/ui": { "optional": true }
+  }
+}

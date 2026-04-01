@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import {
   useAtomValue,
   useAtomSet,
@@ -8,7 +8,9 @@ import {
   setSecret,
   removeSecret,
 } from "@executor/react";
+import type { SecretProviderPlugin } from "@executor/react";
 import { SecretId, ScopeId } from "@executor/sdk";
+import { onePasswordSecretProviderPlugin } from "@executor/plugin-onepassword/react";
 import {
   Dialog,
   DialogContent,
@@ -94,92 +96,100 @@ function AddSecretDialog(props: { open: boolean; onOpenChange: (v: boolean) => v
         props.onOpenChange(v);
       }}
     >
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-[440px]">
         <DialogHeader>
-          <DialogTitle>Add secret</DialogTitle>
-          <DialogDescription>
-            Store a credential or API key. Values are stored in your system keychain when available, with a local file fallback.
+          <DialogTitle className="font-display text-xl">New secret</DialogTitle>
+          <DialogDescription className="text-[13px] leading-relaxed">
+            Store a credential or API key. Values are kept in your system
+            keychain when available, with a local encrypted file fallback.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid gap-4 py-2">
-          <div className="grid gap-1.5">
-            <Label htmlFor="secret-id">ID</Label>
-            <Input
-              id="secret-id"
-              placeholder="github-token"
-              value={id}
-              onChange={(e) => setId((e.target as HTMLInputElement).value)}
-              className="font-mono text-sm"
-            />
-            <p className="text-[11px] text-muted-foreground">
-              Unique identifier used to reference this secret.
-            </p>
+        <div className="grid gap-5 py-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="secret-id" className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                ID
+              </Label>
+              <Input
+                id="secret-id"
+                placeholder="github-token"
+                value={id}
+                onChange={(e) => setId((e.target as HTMLInputElement).value)}
+                className="font-mono text-[13px] h-9"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="secret-name" className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Name
+              </Label>
+              <Input
+                id="secret-name"
+                placeholder="GitHub PAT"
+                value={name}
+                onChange={(e) => setName((e.target as HTMLInputElement).value)}
+                className="text-[13px] h-9"
+              />
+            </div>
           </div>
 
           <div className="grid gap-1.5">
-            <Label htmlFor="secret-name">Name</Label>
-            <Input
-              id="secret-name"
-              placeholder="GitHub Personal Access Token"
-              value={name}
-              onChange={(e) => setName((e.target as HTMLInputElement).value)}
-            />
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="secret-value">Value</Label>
+            <Label htmlFor="secret-value" className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              Value
+            </Label>
             <Input
               id="secret-value"
               type="password"
-              placeholder="ghp_xxxxxxxxxxxx"
+              placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
               value={value}
               onChange={(e) => setValue((e.target as HTMLInputElement).value)}
-              className="font-mono text-sm"
+              className="font-mono text-[13px] h-9"
             />
           </div>
 
-          <div className="grid gap-1.5">
-            <Label htmlFor="secret-purpose">
-              Purpose <span className="text-muted-foreground font-normal">(optional)</span>
-            </Label>
-            <Input
-              id="secret-purpose"
-              placeholder="Authentication for GitHub API"
-              value={purpose}
-              onChange={(e) => setPurpose((e.target as HTMLInputElement).value)}
-            />
-          </div>
-
-          <div className="grid gap-1.5">
-            <Label htmlFor="secret-provider">
-              Storage <span className="text-muted-foreground font-normal">(optional)</span>
-            </Label>
-            <Select value={provider} onValueChange={setProvider}>
-              <SelectTrigger id="secret-provider">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="auto">Auto (keychain → file)</SelectItem>
-                <SelectItem value="keychain">Keychain</SelectItem>
-                <SelectItem value="file">File</SelectItem>
-              </SelectContent>
-            </Select>
-            <p className="text-[11px] text-muted-foreground">
-              Where to store the secret value. Auto uses keychain if available.
-            </p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="grid gap-1.5">
+              <Label htmlFor="secret-purpose" className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Purpose <span className="normal-case tracking-normal font-normal text-muted-foreground/60">(opt.)</span>
+              </Label>
+              <Input
+                id="secret-purpose"
+                placeholder="GitHub API auth"
+                value={purpose}
+                onChange={(e) => setPurpose((e.target as HTMLInputElement).value)}
+                className="text-[13px] h-9"
+              />
+            </div>
+            <div className="grid gap-1.5">
+              <Label htmlFor="secret-provider" className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+                Storage
+              </Label>
+              <Select value={provider} onValueChange={setProvider}>
+                <SelectTrigger id="secret-provider" className="h-9 text-[13px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="auto">Auto</SelectItem>
+                  <SelectItem value="keychain">Keychain</SelectItem>
+                  <SelectItem value="file">File</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           {error && (
-            <p className="text-sm text-destructive">{error}</p>
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2">
+              <p className="text-[12px] text-destructive">{error}</p>
+            </div>
           )}
         </div>
 
         <DialogFooter>
           <DialogClose asChild>
-            <Button variant="outline">Cancel</Button>
+            <Button variant="ghost" size="sm">Cancel</Button>
           </DialogClose>
           <Button
+            size="sm"
             onClick={handleSave}
             disabled={!id.trim() || !name.trim() || !value.trim() || saving}
           >
@@ -202,24 +212,26 @@ function SecretRow(props: {
   const { secret } = props;
 
   return (
-    <div className="group flex items-center justify-between rounded-xl border border-border bg-card px-5 py-3.5 transition-colors hover:border-primary/25">
+    <div className="group relative flex items-center gap-4 rounded-lg border border-border/60 bg-card px-4 py-3 transition-all hover:border-border hover:shadow-[0_1px_3px_rgba(0,0,0,0.04)]">
+      {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <p className="text-sm font-semibold text-foreground">{secret.name}</p>
-          <Badge variant="outline" className="font-mono text-[10px]">
+          <p className="text-[13px] font-medium text-foreground leading-none">{secret.name}</p>
+          <span className="rounded bg-muted px-1.5 py-0.5 font-mono text-[10px] leading-none text-muted-foreground">
             {secret.id}
-          </Badge>
+          </span>
         </div>
         {secret.purpose && (
-          <p className="mt-0.5 text-xs text-muted-foreground">{secret.purpose}</p>
+          <p className="mt-1 text-[12px] text-muted-foreground/70 leading-none">{secret.purpose}</p>
         )}
       </div>
 
-      <div className="flex items-center gap-2">
+      {/* Provider + actions */}
+      <div className="flex items-center gap-1.5">
         {secret.provider && (
-          <Badge variant="secondary" className="text-[10px]">
+          <span className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] font-medium text-muted-foreground leading-none">
             {secret.provider}
-          </Badge>
+          </span>
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
@@ -228,16 +240,16 @@ function SecretRow(props: {
               size="icon"
               className="size-7 opacity-0 group-hover:opacity-100 transition-opacity"
             >
-              <svg viewBox="0 0 16 16" className="size-3.5">
+              <svg viewBox="0 0 16 16" className="size-3">
                 <circle cx="8" cy="3" r="1.2" fill="currentColor" />
                 <circle cx="8" cy="8" r="1.2" fill="currentColor" />
                 <circle cx="8" cy="13" r="1.2" fill="currentColor" />
               </svg>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="w-40">
             <DropdownMenuItem
-              className="text-destructive focus:text-destructive"
+              className="text-destructive focus:text-destructive text-[12px]"
               onClick={props.onRemove}
             >
               Remove secret
@@ -248,6 +260,14 @@ function SecretRow(props: {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Secret provider plugins
+// ---------------------------------------------------------------------------
+
+const secretProviderPlugins: SecretProviderPlugin[] = [
+  onePasswordSecretProviderPlugin,
+];
 
 // ---------------------------------------------------------------------------
 // Page
@@ -275,53 +295,50 @@ export function SecretsPage() {
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-4xl px-6 py-10 lg:px-10 lg:py-14">
+      <div className="mx-auto max-w-3xl px-6 py-10 lg:px-8 lg:py-14">
         {/* Header */}
-        <div className="flex items-end justify-between mb-8">
+        <div className="flex items-end justify-between mb-10">
           <div>
-            <h1 className="font-display text-3xl tracking-tight text-foreground lg:text-4xl">
+            <h1 className="font-display text-[2rem] tracking-tight text-foreground leading-none">
               Secrets
             </h1>
-            <p className="mt-1.5 text-[14px] text-muted-foreground">
-              Credentials and API keys for your connected sources.
+            <p className="mt-2 text-[13px] text-muted-foreground leading-relaxed">
+              Credentials and API keys used by your connected sources.
             </p>
           </div>
-          <Button onClick={() => setAddOpen(true)}>
-            <svg viewBox="0 0 16 16" fill="none" className="size-3.5 mr-1.5">
-              <path d="M8 3v10M3 8h10" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-            </svg>
+          <Button size="sm" onClick={() => setAddOpen(true)}>
             Add secret
           </Button>
         </div>
 
+        {/* Secrets list */}
         {Result.match(secrets, {
           onInitial: () => (
-            <p className="text-sm text-muted-foreground">Loading secrets…</p>
+            <div className="flex items-center gap-2 py-8">
+              <div className="size-1.5 rounded-full bg-muted-foreground/30 animate-pulse" />
+              <p className="text-[13px] text-muted-foreground/60">Loading secrets…</p>
+            </div>
           ),
           onFailure: () => (
-            <p className="text-sm text-destructive">Failed to load secrets</p>
+            <div className="rounded-lg border border-destructive/30 bg-destructive/5 px-4 py-3">
+              <p className="text-[13px] text-destructive">Failed to load secrets</p>
+            </div>
           ),
           onSuccess: ({ value }) =>
             value.length === 0 ? (
-              <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border py-20">
-                <div className="flex size-12 items-center justify-center rounded-2xl bg-muted text-muted-foreground mb-4">
-                  <svg viewBox="0 0 16 16" className="size-5">
-                    <rect x="3" y="7" width="10" height="7" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.2" />
-                    <path d="M5 7V5a3 3 0 0 1 6 0v2" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
-                  </svg>
-                </div>
-                <p className="text-[14px] font-medium text-foreground/70 mb-1">
-                  No secrets stored
+              <div className="flex flex-col items-center justify-center rounded-xl border border-dashed border-border/70 py-16">
+                  <p className="text-[13px] font-medium text-foreground/60 mb-1">
+                  No secrets yet
                 </p>
-                <p className="text-[13px] text-muted-foreground/60 mb-5">
-                  Add a secret to store API keys and credentials.
+                <p className="text-[12px] text-muted-foreground/50 mb-5 max-w-[240px] text-center leading-relaxed">
+                  Add API keys and credentials to authenticate your sources.
                 </p>
                 <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
                   Add your first secret
                 </Button>
               </div>
             ) : (
-              <div className="grid gap-2">
+              <div className="grid gap-1.5">
                 {value.map((s) => (
                   <SecretRow
                     key={s.id}
@@ -337,6 +354,32 @@ export function SecretsPage() {
               </div>
             ),
         })}
+
+        {/* Provider plugins */}
+        {secretProviderPlugins.length > 0 && (
+          <div className="mt-12">
+            <div className="flex items-center gap-3 mb-4">
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
+                Providers
+              </h2>
+              <div className="flex-1 h-px bg-border/50" />
+            </div>
+            <div className="grid gap-3">
+              {secretProviderPlugins.map((plugin) => (
+                <Suspense
+                  key={plugin.key}
+                  fallback={
+                    <div className="rounded-xl border border-border/60 bg-card p-5 animate-pulse">
+                      <div className="h-4 w-24 rounded bg-muted" />
+                    </div>
+                  }
+                >
+                  <plugin.settings />
+                </Suspense>
+              ))}
+            </div>
+          </div>
+        )}
 
         <AddSecretDialog open={addOpen} onOpenChange={setAddOpen} />
       </div>

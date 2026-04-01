@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@executor/plugin-onepassword": "workspace:*",
     "@executor/plugin-openapi": "workspace:*",
     "@executor/sdk": "workspace:*",
     "@executor/react": "workspace:*",

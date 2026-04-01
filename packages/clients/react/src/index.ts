@@ -44,3 +44,4 @@ export type { ScopeId as ScopeIdType, ToolId as ToolIdType } from "@executor/sdk
 
 // Plugin contracts
 export type { SourcePlugin } from "./source-plugin";
+export type { SecretProviderPlugin } from "./secret-provider-plugin";

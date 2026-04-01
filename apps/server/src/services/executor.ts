@@ -8,6 +8,7 @@ import { makeSqliteKv, makeKvConfig, migrate } from "@executor/storage-file";
 import { openApiPlugin, makeKvOperationStore, type OpenApiPluginExtension } from "@executor/plugin-openapi";
 import { keychainPlugin } from "@executor/plugin-keychain";
 import { fileSecretsPlugin } from "@executor/plugin-file-secrets";
+import { onepasswordPlugin, type OnePasswordExtension } from "@executor/plugin-onepassword";
 
 import type { Executor, ExecutorPlugin } from "@executor/sdk";
 
@@ -15,6 +16,7 @@ type ServerPlugins = readonly [
   ExecutorPlugin<"openapi", OpenApiPluginExtension>,
   ReturnType<typeof keychainPlugin>,
   ReturnType<typeof fileSecretsPlugin>,
+  ExecutorPlugin<"onepassword", OnePasswordExtension>,
 ];
 type ServerExecutor = Executor<ServerPlugins>;
 
@@ -62,6 +64,9 @@ export const ExecutorServiceLive = Layer.effect(
         }),
         keychainPlugin(),
         fileSecretsPlugin(),
+        onepasswordPlugin({
+          kv: scopeKv(kv, "onepassword"),
+        }),
       ] as const,
     });
   }),
