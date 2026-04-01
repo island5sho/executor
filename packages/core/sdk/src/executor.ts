@@ -1,7 +1,7 @@
 import { Context, Effect } from "effect";
 
 import type { ToolId, SecretId, PolicyId } from "./ids";
-import type { SecretRef, SecretStore } from "./secrets";
+import type { SecretProvider, SecretRef, SecretStore } from "./secrets";
 import type {
   ToolMetadata,
   ToolSchema,
@@ -86,6 +86,10 @@ export type Executor<
     readonly remove: (
       secretId: SecretId,
     ) => Effect.Effect<boolean, SecretNotFoundError>;
+    /** Register a secret provider */
+    readonly addProvider: (provider: SecretProvider) => Effect.Effect<void>;
+    /** List registered provider keys */
+    readonly providers: () => Effect.Effect<readonly string[]>;
   };
 
   readonly close: () => Effect.Effect<void>;
@@ -176,6 +180,8 @@ export const createExecutor = <
         }) => secrets.set({ ...input, scopeId: scope.id }),
         remove: (secretId: SecretId) =>
           secrets.remove(secretId),
+        addProvider: (provider: SecretProvider) => secrets.addProvider(provider),
+        providers: () => secrets.providers(),
       },
 
       close: () =>

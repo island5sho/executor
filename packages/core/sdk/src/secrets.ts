@@ -84,6 +84,7 @@ export class SecretStore extends Context.Tag("@executor/sdk/SecretStore")<
       readonly provider?: string;
     }) => Effect.Effect<SecretRef, SecretResolutionError>;
 
+
     /** Remove a secret ref and its value from the provider */
     readonly remove: (
       secretId: SecretId,
