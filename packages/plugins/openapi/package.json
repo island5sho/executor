@@ -13,8 +13,8 @@
   },
   "dependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",
-    "@effect/platform": "^0.96.0",
-    "@effect/platform-node": "^0.106.0",
+    "@effect/platform": "catalog:",
+    "@effect/platform-node": "catalog:",
     "@executor/sdk": "workspace:*",
     "effect": "catalog:",
     "openapi-types": "^12.1.3",
