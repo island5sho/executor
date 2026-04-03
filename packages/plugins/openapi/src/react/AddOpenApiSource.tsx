@@ -2,158 +2,26 @@ import { useState } from "react";
 import { useAtomSet, useAtomValue, useAtomRefresh, Result } from "@effect-atom/atom-react";
 import { Option } from "effect";
 
-import { secretsAtom, setSecret, resolveSecret, ScopeId } from "@executor/react";
+import {
+  secretsAtom,
+  setSecret,
+  resolveSecret,
+  ScopeId,
+  SecretPicker,
+  type SecretPickerSecret,
+} from "@executor/react";
 import { SecretId } from "@executor/sdk";
 import { Button } from "@executor/ui/components/button";
 import { Input } from "@executor/ui/components/input";
 import { Label } from "@executor/ui/components/label";
 import { Textarea } from "@executor/ui/components/textarea";
 import { Badge } from "@executor/ui/components/badge";
-import {
-  Command,
-  CommandList,
-  CommandEmpty,
-  CommandGroup,
-  CommandItem,
-} from "@executor/ui/components/command";
-import {
-  Popover,
-  PopoverAnchor,
-  PopoverContent,
-} from "@executor/ui/components/popover";
 import { RadioGroup, RadioGroupItem } from "@executor/ui/components/radio-group";
 import { Separator } from "@executor/ui/components/separator";
 import { Spinner } from "@executor/ui/components/spinner";
 import { previewOpenApiSpec, addOpenApiSpec } from "./atoms";
 import type { SpecPreview, HeaderPreset } from "../sdk/preview";
 import type { HeaderValue } from "../sdk/types";
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface SecretEntry {
-  id: string;
-  name: string;
-  provider?: string;
-}
-
-// ---------------------------------------------------------------------------
-// Provider display names
-// ---------------------------------------------------------------------------
-
-const PROVIDER_LABELS: Record<string, string> = {
-  keychain: "Keychain",
-  file: "Local",
-  memory: "Memory",
-  onepassword: "1Password",
-};
-
-function providerLabel(key: string | undefined): string {
-  if (!key) return "Local";
-  return PROVIDER_LABELS[key] ?? key;
-}
-
-// ---------------------------------------------------------------------------
-// Secret picker — combobox grouped by provider
-// ---------------------------------------------------------------------------
-
-function SecretPicker(props: {
-  value: string | null;
-  onSelect: (secretId: string) => void;
-  secrets: readonly SecretEntry[];
-  placeholder?: string;
-}) {
-  const { value, onSelect, secrets, placeholder = "Search secrets…" } = props;
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
-
-  const selected = secrets.find((s) => s.id === value) ?? null;
-
-  // Group by provider, sorted alphabetically
-  const grouped = new Map<string, SecretEntry[]>();
-  for (const s of secrets) {
-    const key = providerLabel(s.provider);
-    const group = grouped.get(key);
-    if (group) {
-      group.push(s);
-    } else {
-      grouped.set(key, [s]);
-    }
-  }
-  const groups: [string, SecretEntry[]][] = [...grouped.entries()]
-    .map(([label, items]): [string, SecretEntry[]] => [label, [...items].sort((a, b) => a.name.localeCompare(b.name))])
-    .sort(([a], [b]) => a.localeCompare(b));
-
-  return (
-    <div className="relative w-full">
-      <Popover open={open} onOpenChange={setOpen} modal={false}>
-        <PopoverAnchor asChild>
-          <Input
-            value={open ? query : (selected ? selected.name : "")}
-            onChange={(e) => {
-              setQuery((e.target as HTMLInputElement).value);
-              if (!open) setOpen(true);
-            }}
-            onFocus={() => setOpen(true)}
-            onBlur={(e) => {
-              // Don't close if focus moved into the popover
-              const related = (e as React.FocusEvent).relatedTarget as HTMLElement | null;
-              if (related?.closest("[data-slot=popover-content]")) return;
-              setOpen(false);
-            }}
-            placeholder={placeholder}
-            className="text-sm"
-          />
-        </PopoverAnchor>
-        <PopoverContent
-          className="w-(--radix-popover-trigger-width) p-0"
-          align="start"
-          onOpenAutoFocus={(e) => e.preventDefault()}
-          onCloseAutoFocus={(e) => e.preventDefault()}
-          onInteractOutside={(e) => {
-            // Don't close if interacting with the input
-            const target = e.target as HTMLElement | null;
-            if (target?.closest("[data-slot=popover-anchor]")) {
-              e.preventDefault();
-            }
-          }}
-        >
-          <Command shouldFilter={false}>
-            <CommandList>
-              <CommandEmpty>No secrets found</CommandEmpty>
-              {groups.map(([label, items]) => {
-                const lq = query.toLowerCase();
-                const filtered = lq
-                  ? items.filter((s) => s.name.toLowerCase().includes(lq) || s.id.toLowerCase().includes(lq))
-                  : items;
-                if (filtered.length === 0) return null;
-                return (
-                  <CommandGroup key={label} heading={label}>
-                    {filtered.map((s) => (
-                      <CommandItem
-                        key={s.id}
-                        value={`${s.name} ${s.id}`}
-                        onSelect={() => {
-                          onSelect(s.id);
-                          setOpen(false);
-                          setQuery("");
-                        }}
-                      >
-                        <span className="truncate">{s.name}</span>
-                        <span className="ml-auto text-[10px] font-mono text-muted-foreground truncate">{s.id}</span>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                );
-              })}
-            </CommandList>
-          </Command>
-        </PopoverContent>
-      </Popover>
-    </div>
-  );
-}
 
 // ---------------------------------------------------------------------------
 // Inline secret creation
@@ -333,7 +201,7 @@ function HeaderSecretRow(props: {
   prefix?: string;
   selectedSecretId: string | null;
   onSelect: (secretId: string) => void;
-  existingSecrets: readonly SecretEntry[];
+  existingSecrets: readonly SecretPickerSecret[];
 }) {
   const [creating, setCreating] = useState(false);
   const { headerName, prefix, selectedSecretId, onSelect, existingSecrets } = props;
@@ -419,7 +287,7 @@ function CustomHeaderRow(props: {
   onChange: (update: { name: string; prefix?: string; presetKey?: string }) => void;
   onSelectSecret: (secretId: string) => void;
   onRemove: () => void;
-  existingSecrets: readonly SecretEntry[];
+  existingSecrets: readonly SecretPickerSecret[];
 }) {
   const [creating, setCreating] = useState(false);
   const { name, prefix, presetKey, secretId, onChange, onSelectSecret, onRemove, existingSecrets } = props;
@@ -568,9 +436,9 @@ export default function AddOpenApiSource(props: {
   const doAdd = useAtomSet(addOpenApiSpec, { mode: "promise" });
   const secrets = useAtomValue(secretsAtom());
 
-  const secretList: readonly SecretEntry[] = Result.match(secrets, {
-    onInitial: () => [] as SecretEntry[],
-    onFailure: () => [] as SecretEntry[],
+  const secretList: readonly SecretPickerSecret[] = Result.match(secrets, {
+    onInitial: () => [] as SecretPickerSecret[],
+    onFailure: () => [] as SecretPickerSecret[],
     onSuccess: ({ value }) =>
       value.map((s) => ({
         id: s.id,

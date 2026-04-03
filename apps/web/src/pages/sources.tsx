@@ -4,13 +4,18 @@ import { Result, useAtomValue, useAtomRefresh, sourcesAtom } from "@executor/rea
 import type { SourcePlugin } from "@executor/react";
 import { openApiSourcePlugin } from "@executor/plugin-openapi/react";
 import { mcpSourcePlugin } from "@executor/plugin-mcp/react";
+import { googleDiscoverySourcePlugin } from "@executor/plugin-google-discovery/react";
 import { McpInstallCard } from "../components/mcp-install-card";
 
 // ---------------------------------------------------------------------------
 // Registered source plugins
 // ---------------------------------------------------------------------------
 
-const sourcePlugins: SourcePlugin[] = [openApiSourcePlugin, mcpSourcePlugin];
+const sourcePlugins: SourcePlugin[] = [
+  openApiSourcePlugin,
+  mcpSourcePlugin,
+  googleDiscoverySourcePlugin,
+];
 
 // ---------------------------------------------------------------------------
 // Page

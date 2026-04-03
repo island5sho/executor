@@ -67,7 +67,15 @@ export const makeOnePasswordClient = (
         onTimeout: () =>
           new OnePasswordError({
             operation: "client setup",
-            message: `timed out after ${Math.floor(timeoutMs / 1000)}s — approve the request in the 1Password desktop app and try again`,
+            message: [
+              `timed out after ${Math.floor(timeoutMs / 1000)}s.`,
+              "Troubleshooting:",
+              "1. Make sure the 1Password desktop app is open and unlocked",
+              "2. Check for an approval prompt in the 1Password app — it may be behind other windows",
+              "3. Ensure 'Developer > Connect with 1Password CLI' is enabled in 1Password Settings",
+              "4. Make sure no other app or terminal is waiting for 1Password approval (only one prompt at a time)",
+              "5. Try quitting 1Password completely and reopening it, then retry",
+            ].join("\n"),
           }),
       }),
     );
@@ -89,7 +97,15 @@ export const makeOnePasswordClient = (
           onTimeout: () =>
             new OnePasswordError({
               operation,
-              message: `timed out after ${Math.floor(timeoutMs / 1000)}s — approve the request in the 1Password desktop app and try again`,
+              message: [
+                `timed out after ${Math.floor(timeoutMs / 1000)}s.`,
+                "Troubleshooting:",
+                "1. Make sure the 1Password desktop app is open and unlocked",
+                "2. Check for an approval prompt in the 1Password app — it may be behind other windows",
+                "3. Ensure 'Developer > Connect with 1Password CLI' is enabled in 1Password Settings",
+                "4. Make sure no other app or terminal is waiting for 1Password approval (only one prompt at a time)",
+                "5. Try quitting 1Password completely and reopening it, then retry",
+              ].join("\n"),
             }),
         }),
         Effect.withSpan(`onepassword.${operation}`),

@@ -21,6 +21,7 @@
         "@executor/api": "workspace:*",
         "@executor/host-mcp": "workspace:*",
         "@executor/plugin-file-secrets": "workspace:*",
+        "@executor/plugin-google-discovery": "workspace:*",
         "@executor/plugin-keychain": "workspace:*",
         "@executor/plugin-mcp": "workspace:*",
         "@executor/plugin-onepassword": "workspace:*",
@@ -40,6 +41,7 @@
       "name": "@executor/web",
       "version": "0.0.0",
       "dependencies": {
+        "@executor/plugin-google-discovery": "workspace:*",
         "@executor/plugin-mcp": "workspace:*",
         "@executor/plugin-onepassword": "workspace:*",
         "@executor/plugin-openapi": "workspace:*",
@@ -75,6 +77,7 @@
         "@effect/platform": "catalog:",
         "@executor/api": "workspace:*",
         "@executor/sdk": "workspace:*",
+        "@executor/ui": "workspace:*",
         "effect": "catalog:",
         "react": "^19.1.0",
       },
@@ -212,6 +215,41 @@
         "bun-types": "catalog:",
         "vitest": "catalog:",
       },
+    },
+    "packages/plugins/google-discovery": {
+      "name": "@executor/plugin-google-discovery",
+      "version": "0.0.0",
+      "dependencies": {
+        "@effect/platform": "catalog:",
+        "@executor/api": "workspace:*",
+        "@executor/sdk": "workspace:*",
+        "effect": "catalog:",
+      },
+      "devDependencies": {
+        "@effect-atom/atom-react": "^0.5.0",
+        "@effect/vitest": "catalog:",
+        "@executor/react": "workspace:*",
+        "@executor/ui": "workspace:*",
+        "@types/node": "catalog:",
+        "@types/react": "^19.1.0",
+        "bun-types": "catalog:",
+        "react": "^19.1.0",
+        "vitest": "catalog:",
+      },
+      "peerDependencies": {
+        "@effect-atom/atom-react": "^0.5.0",
+        "@executor/react": "workspace:*",
+        "@executor/ui": "workspace:*",
+        "@tanstack/react-router": "^1.168.10",
+        "react": "^19.1.0",
+      },
+      "optionalPeers": [
+        "@effect-atom/atom-react",
+        "@executor/react",
+        "@executor/ui",
+        "@tanstack/react-router",
+        "react",
+      ],
     },
     "packages/plugins/keychain": {
       "name": "@executor/plugin-keychain",
@@ -554,6 +592,8 @@
     "@executor/ir": ["@executor/ir@workspace:packages/kernel/ir"],
 
     "@executor/plugin-file-secrets": ["@executor/plugin-file-secrets@workspace:packages/plugins/file-secrets"],
+
+    "@executor/plugin-google-discovery": ["@executor/plugin-google-discovery@workspace:packages/plugins/google-discovery"],
 
     "@executor/plugin-keychain": ["@executor/plugin-keychain@workspace:packages/plugins/keychain"],
 

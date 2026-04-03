@@ -107,7 +107,7 @@ function VaultPicker(props: {
       )}
       {error && (
         <div className="rounded-md border border-destructive/20 bg-destructive/5 px-2.5 py-1.5">
-          <p className="text-[11px] text-destructive leading-relaxed">{error}</p>
+          <p className="text-[11px] text-destructive leading-relaxed whitespace-pre-line">{error}</p>
         </div>
       )}
     </div>
@@ -246,7 +246,7 @@ function ConfigDialog(props: {
 
           {error && (
             <div className="rounded-md border border-destructive/20 bg-destructive/5 px-3 py-2">
-              <p className="text-[12px] text-destructive">{error}</p>
+              <p className="text-[12px] text-destructive whitespace-pre-line">{error}</p>
             </div>
           )}
         </div>

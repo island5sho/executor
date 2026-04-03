@@ -37,6 +37,8 @@ export {
 
 // Provider
 export { ExecutorProvider } from "./provider";
+export { SecretPicker } from "./secret-picker";
+export type { SecretPickerSecret } from "./secret-picker";
 
 // Re-export commonly needed SDK types
 export { ScopeId, ToolId } from "@executor/sdk";

@@ -7,6 +7,11 @@ import { createExecutor, scopeKv } from "@executor/sdk";
 import { makeSqliteKv, makeKvConfig, migrate } from "@executor/storage-file";
 import { openApiPlugin, makeKvOperationStore, type OpenApiPluginExtension } from "@executor/plugin-openapi";
 import { mcpPlugin, makeKvBindingStore, type McpPluginExtension } from "@executor/plugin-mcp";
+import {
+  googleDiscoveryPlugin,
+  makeKvBindingStore as makeKvGoogleDiscoveryBindingStore,
+  type GoogleDiscoveryPluginExtension,
+} from "@executor/plugin-google-discovery";
 import { keychainPlugin } from "@executor/plugin-keychain";
 import { fileSecretsPlugin } from "@executor/plugin-file-secrets";
 import { onepasswordPlugin, type OnePasswordExtension } from "@executor/plugin-onepassword";
@@ -16,6 +21,7 @@ import type { Executor, ExecutorPlugin } from "@executor/sdk";
 type ServerPlugins = readonly [
   ExecutorPlugin<"openapi", OpenApiPluginExtension>,
   ExecutorPlugin<"mcp", McpPluginExtension>,
+  ExecutorPlugin<"googleDiscovery", GoogleDiscoveryPluginExtension>,
   ReturnType<typeof keychainPlugin>,
   ReturnType<typeof fileSecretsPlugin>,
   ExecutorPlugin<"onepassword", OnePasswordExtension>,
@@ -68,6 +74,9 @@ const ExecutorLayer = Layer.effect(
         }),
         mcpPlugin({
           bindingStore: makeKvBindingStore(kv, "mcp"),
+        }),
+        googleDiscoveryPlugin({
+          bindingStore: makeKvGoogleDiscoveryBindingStore(kv, "google-discovery"),
         }),
         keychainPlugin(),
         fileSecretsPlugin(),

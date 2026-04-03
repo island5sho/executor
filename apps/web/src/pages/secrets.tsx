@@ -311,6 +311,32 @@ export function SecretsPage() {
           </Button>
         </div>
 
+        {/* Provider plugins */}
+        {secretProviderPlugins.length > 0 && (
+          <div className="mb-10">
+            <div className="flex items-center gap-3 mb-4">
+              <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
+                Providers
+              </h2>
+              <div className="flex-1 h-px bg-border/50" />
+            </div>
+            <div className="grid gap-3">
+              {secretProviderPlugins.map((plugin) => (
+                <Suspense
+                  key={plugin.key}
+                  fallback={
+                    <div className="rounded-xl border border-border/60 bg-card p-5 animate-pulse">
+                      <div className="h-4 w-24 rounded bg-muted" />
+                    </div>
+                  }
+                >
+                  <plugin.settings />
+                </Suspense>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Secrets list */}
         {Result.match(secrets, {
           onInitial: () => (
@@ -354,32 +380,6 @@ export function SecretsPage() {
               </div>
             ),
         })}
-
-        {/* Provider plugins */}
-        {secretProviderPlugins.length > 0 && (
-          <div className="mt-12">
-            <div className="flex items-center gap-3 mb-4">
-              <h2 className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground/60">
-                Providers
-              </h2>
-              <div className="flex-1 h-px bg-border/50" />
-            </div>
-            <div className="grid gap-3">
-              {secretProviderPlugins.map((plugin) => (
-                <Suspense
-                  key={plugin.key}
-                  fallback={
-                    <div className="rounded-xl border border-border/60 bg-card p-5 animate-pulse">
-                      <div className="h-4 w-24 rounded bg-muted" />
-                    </div>
-                  }
-                >
-                  <plugin.settings />
-                </Suspense>
-              ))}
-            </div>
-          </div>
-        )}
 
         <AddSecretDialog open={addOpen} onOpenChange={setAddOpen} />
       </div>
