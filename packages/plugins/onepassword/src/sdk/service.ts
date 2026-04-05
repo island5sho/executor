@@ -1,5 +1,4 @@
 import { Context, Duration, Effect } from "effect";
-import { createClient, DesktopAuth } from "@1password/sdk";
 import * as op from "@1password/op-js";
 
 import { OnePasswordError } from "./errors";
@@ -53,6 +52,17 @@ export type ResolvedAuth =
 // ---------------------------------------------------------------------------
 
 const DEFAULT_TIMEOUT_MS = 15_000;
+type OnePasswordSdkModule = typeof import("@1password/sdk");
+
+const loadOnePasswordSdk = (): Effect.Effect<OnePasswordSdkModule, OnePasswordError> =>
+  Effect.tryPromise({
+    try: () => import("@1password/sdk"),
+    catch: (cause) =>
+      new OnePasswordError({
+        operation: "sdk module load",
+        message: cause instanceof Error ? cause.message : String(cause),
+      }),
+  });
 
 const makeTimeoutMessage = (operation: string, timeoutMs: number): string =>
   [
@@ -71,13 +81,23 @@ export const makeNativeSdkService = (
 ): Effect.Effect<OnePasswordService, OnePasswordError> =>
   Effect.gen(function* () {
     const timeout = Duration.millis(timeoutMs);
+    const sdk = yield* loadOnePasswordSdk().pipe(
+      Effect.timeoutFail({
+        duration: timeout,
+        onTimeout: () =>
+          new OnePasswordError({
+            operation: "sdk module load",
+            message: makeTimeoutMessage("sdk module load", timeoutMs),
+          }),
+      }),
+    );
 
     const client = yield* Effect.tryPromise({
       try: () =>
-        createClient({
+        sdk.createClient({
           auth:
             auth.kind === "desktop-app"
-              ? new DesktopAuth(auth.accountName)
+              ? new sdk.DesktopAuth(auth.accountName)
               : auth.token,
           integrationName: "Executor",
           integrationVersion: "0.0.0",
