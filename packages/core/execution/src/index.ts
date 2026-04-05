@@ -10,4 +10,10 @@ export {
 } from "./engine";
 
 export { buildExecuteDescription } from "./description";
-export { makeExecutorToolInvoker, discoverTools, describeTool } from "./tool-invoker";
+export { ExecutionToolError } from "./errors";
+export {
+  makeExecutorToolInvoker,
+  searchTools,
+  listExecutorSources,
+  describeTool,
+} from "./tool-invoker";
