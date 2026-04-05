@@ -4,6 +4,7 @@ import type { OAuthClientProvider } from "@modelcontextprotocol/sdk/client/auth.
 import type { OAuthTokens } from "@modelcontextprotocol/sdk/shared/auth.js";
 import {
   Source,
+  SourceDetectionResult,
   definePlugin,
   type ExecutorPlugin,
   type PluginContext,
@@ -377,6 +378,60 @@ export const mcpPlugin = (options?: {
               yield* ctx.tools.unregisterBySource(sourceId);
               addedSources.delete(sourceId);
             }).pipe(Effect.catchAll(() => Effect.void)),
+
+          detect: (url: string) =>
+            Effect.gen(function* () {
+              const trimmed = url.trim();
+              if (!trimmed) return null;
+              try { new URL(trimmed); } catch { return null; }
+
+              const name = (() => {
+                try { return new URL(trimmed).hostname; } catch { return "mcp"; }
+              })();
+              const namespace = deriveMcpNamespace({ endpoint: trimmed });
+
+              const connector = createMcpConnector({
+                transport: "remote",
+                endpoint: trimmed,
+              });
+
+              const connected = yield* discoverTools(connector).pipe(
+                Effect.map(() => true),
+                Effect.catchAll(() => Effect.succeed(false)),
+              );
+
+              if (connected) {
+                return new SourceDetectionResult({
+                  kind: "mcp",
+                  confidence: "high",
+                  endpoint: trimmed,
+                  name,
+                  namespace,
+                });
+              }
+
+              // Probe for OAuth — still means it's an MCP server
+              const hasOAuth = yield* startMcpOAuthAuthorization({
+                endpoint: trimmed,
+                redirectUrl: "http://127.0.0.1/executor/discovery/oauth/probe",
+                state: "probe",
+              }).pipe(
+                Effect.map(() => true),
+                Effect.catchAll(() => Effect.succeed(false)),
+              );
+
+              if (hasOAuth) {
+                return new SourceDetectionResult({
+                  kind: "mcp",
+                  confidence: "high",
+                  endpoint: trimmed,
+                  name,
+                  namespace,
+                });
+              }
+
+              return null;
+            }),
 
           refresh: (sourceId: string) =>
             Effect.gen(function* () {

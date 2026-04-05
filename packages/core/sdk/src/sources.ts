@@ -20,6 +20,23 @@ export class Source extends Schema.Class<Source>("Source")({
 }) {}
 
 // ---------------------------------------------------------------------------
+// SourceDetectionResult — returned by detect() on a SourceManager
+// ---------------------------------------------------------------------------
+
+export class SourceDetectionResult extends Schema.Class<SourceDetectionResult>("SourceDetectionResult")({
+  /** Plugin kind that detected this source */
+  kind: Schema.String,
+  /** How confident the plugin is that the URL matches */
+  confidence: Schema.Literal("high", "medium", "low"),
+  /** The URL that was probed */
+  endpoint: Schema.String,
+  /** Suggested human-readable name */
+  name: Schema.String,
+  /** Suggested namespace */
+  namespace: Schema.String,
+}) {}
+
+// ---------------------------------------------------------------------------
 // SourceManager — plugin-provided source lifecycle handler
 //
 // Each plugin registers one of these during init. The SourceRegistry
@@ -38,6 +55,9 @@ export interface SourceManager {
 
   /** Re-fetch / re-register tools for a source */
   readonly refresh?: (sourceId: string) => Effect.Effect<void>;
+
+  /** Detect whether a URL matches this plugin's source type */
+  readonly detect?: (url: string) => Effect.Effect<SourceDetectionResult | null>;
 }
 
 // ---------------------------------------------------------------------------
@@ -66,6 +86,9 @@ export class SourceRegistry extends Context.Tag(
 
     /** Refresh a source by id. Finds the owning manager and delegates. */
     readonly refresh: (sourceId: string) => Effect.Effect<void>;
+
+    /** Detect source type from a URL by probing all registered plugins */
+    readonly detect: (url: string) => Effect.Effect<readonly SourceDetectionResult[]>;
   }
 >() {}
 
@@ -138,6 +161,26 @@ export const makeInMemorySourceRegistry = () => {
             return;
           }
         }
+      }),
+
+    detect: (url: string) =>
+      Effect.gen(function* () {
+        const detectors = [...managers.values()]
+          .filter((m) => m.detect)
+          .map((m) =>
+            m.detect!(url).pipe(
+              Effect.timeout("5 seconds"),
+              Effect.catchAll(() => Effect.succeed(null)),
+            ),
+          );
+
+        const results = yield* Effect.all(detectors, { concurrency: "unbounded" });
+        return results
+          .filter((r): r is SourceDetectionResult => r !== null)
+          .sort((a, b) => {
+            const order = { high: 0, medium: 1, low: 2 };
+            return order[a.confidence] - order[b.confidence];
+          });
       }),
   };
 };

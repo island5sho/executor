@@ -157,8 +157,9 @@ function AuthHeaderRow(props: {
 export default function AddGraphqlSource(props: {
   onComplete: () => void;
   onCancel: () => void;
+  initialUrl?: string;
 }) {
-  const [endpoint, setEndpoint] = useState("");
+  const [endpoint, setEndpoint] = useState(props.initialUrl ?? "");
   const [namespace, setNamespace] = useState("");
   const [authSecretId, setAuthSecretId] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);

@@ -1,4 +1,4 @@
-import { useReducer, useCallback } from "react";
+import { useReducer, useCallback, useEffect, useRef } from "react";
 import { useAtomSet } from "@effect-atom/atom-react";
 
 import { ScopeId } from "@executor/react";
@@ -164,8 +164,12 @@ function openOAuthPopup(
 export default function AddMcpSource(props: {
   onComplete: () => void;
   onCancel: () => void;
+  initialUrl?: string;
 }) {
-  const [state, dispatch] = useReducer(reducer, init);
+  const [state, dispatch] = useReducer(
+    reducer,
+    props.initialUrl ? { step: "url" as const, url: props.initialUrl } : init,
+  );
 
   const doProbe = useAtomSet(probeMcpEndpoint, { mode: "promise" });
   const doAdd = useAtomSet(addMcpSource, { mode: "promise" });
@@ -195,6 +199,14 @@ export default function AddMcpSource(props: {
       dispatch({ type: "probe-fail", error: e instanceof Error ? e.message : "Failed to connect" });
     }
   }, [state.url, doProbe]);
+
+  const autoProbed = useRef(false);
+  useEffect(() => {
+    if (props.initialUrl && !autoProbed.current) {
+      autoProbed.current = true;
+      handleProbe();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOAuth = useCallback(async () => {
     dispatch({ type: "oauth-start" });

@@ -33,6 +33,7 @@ export {
   removeSecret,
   removeSource,
   refreshSource,
+  detectSource,
 } from "./atoms";
 
 // Provider

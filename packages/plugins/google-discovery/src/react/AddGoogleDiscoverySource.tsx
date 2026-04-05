@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtomSet, useAtomValue, Result } from "@effect-atom/atom-react";
 
 import {
@@ -263,15 +263,16 @@ function openOAuthPopup(
 export default function AddGoogleDiscoverySource(props: {
   readonly onComplete: () => void;
   readonly onCancel: () => void;
+  readonly initialUrl?: string;
 }) {
   const defaultTemplate =
     GOOGLE_DISCOVERY_TEMPLATES.find((template) => template.id === "google-sheets")
     ?? GOOGLE_DISCOVERY_TEMPLATES[0]!;
   const [discoveryUrl, setDiscoveryUrl] = useState(
-    defaultTemplate.discoveryUrl,
+    props.initialUrl ?? defaultTemplate.discoveryUrl,
   );
-  const [name, setName] = useState(defaultTemplate.name);
-  const [selectedTemplateId, setSelectedTemplateId] = useState(defaultTemplate.id);
+  const [name, setName] = useState(props.initialUrl ? "" : defaultTemplate.name);
+  const [selectedTemplateId, setSelectedTemplateId] = useState(props.initialUrl ? "" : defaultTemplate.id);
   const selectedTemplate =
     GOOGLE_DISCOVERY_TEMPLATES.find((template) => template.id === selectedTemplateId)
     ?? null;
@@ -342,6 +343,14 @@ export default function AddGoogleDiscoverySource(props: {
       setLoadingProbe(false);
     }
   }, [discoveryUrl, doProbe, name]);
+
+  const autoProbed = useRef(false);
+  useEffect(() => {
+    if (props.initialUrl && !autoProbed.current) {
+      autoProbed.current = true;
+      handleProbe();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleStartOAuth = useCallback(async () => {
     if (!probe) return;

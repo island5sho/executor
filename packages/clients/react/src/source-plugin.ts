@@ -24,10 +24,12 @@ export interface SourcePlugin {
    * The "add source" flow.
    * Plugin controls the entire experience.
    * Call `onComplete` when done, `onCancel` to bail out.
+   * `initialUrl` is provided when the user arrived via URL auto-detection.
    */
   readonly add: ComponentType<{
     readonly onComplete: () => void;
     readonly onCancel: () => void;
+    readonly initialUrl?: string;
   }>;
 
   /**

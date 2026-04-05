@@ -4,6 +4,7 @@ import { Effect, Option } from "effect";
 
 import {
   Source,
+  SourceDetectionResult,
   definePlugin,
   type ExecutorPlugin,
   type PluginContext,
@@ -305,6 +306,41 @@ export const googleDiscoveryPlugin = (options?: {
               }
               yield* bindingStore.removeSourceMeta(sourceId);
               yield* bindingStore.removeSourceData(sourceId);
+            }),
+          detect: (url: string) =>
+            Effect.gen(function* () {
+              const trimmed = url.trim();
+              if (!trimmed) return null;
+              try { new URL(trimmed); } catch { return null; }
+
+              // Only probe URLs that look like Google Discovery docs
+              const isGoogleUrl = trimmed.includes("googleapis.com");
+              const isDiscoveryPath = trimmed.includes("/discovery/") || trimmed.includes("$discovery");
+              if (!isGoogleUrl && !isDiscoveryPath) return null;
+
+              const discoveryText = yield* fetchDiscoveryDocument(trimmed).pipe(
+                Effect.catchAll(() => Effect.succeed(null)),
+              );
+              if (!discoveryText) return null;
+
+              const manifest = yield* extractGoogleDiscoveryManifest(discoveryText).pipe(
+                Effect.catchAll(() => Effect.succeed(null)),
+              );
+              if (!manifest) return null;
+
+              const name = Option.getOrElse(manifest.title, () => `${manifest.service} ${manifest.version}`);
+
+              return new SourceDetectionResult({
+                kind: "googleDiscovery",
+                confidence: "high",
+                endpoint: trimmed,
+                name,
+                namespace: deriveNamespace({
+                  name,
+                  service: manifest.service,
+                  version: manifest.version,
+                }),
+              });
             }),
           refresh: (sourceId) =>
             Effect.gen(function* () {

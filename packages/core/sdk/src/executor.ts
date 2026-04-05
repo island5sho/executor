@@ -10,7 +10,7 @@ import type {
   ToolListFilter,
   InvokeOptions,
 } from "./tools";
-import type { Source, SourceRegistry } from "./sources";
+import type { Source, SourceDetectionResult, SourceRegistry } from "./sources";
 import type { Policy, PolicyEngine } from "./policies";
 import type { Scope } from "./scope";
 import type {
@@ -70,6 +70,7 @@ export type Executor<
     readonly list: () => Effect.Effect<readonly Source[]>;
     readonly remove: (sourceId: string) => Effect.Effect<void>;
     readonly refresh: (sourceId: string) => Effect.Effect<void>;
+    readonly detect: (url: string) => Effect.Effect<readonly SourceDetectionResult[]>;
   };
 
   readonly policies: {
@@ -193,6 +194,7 @@ export const createExecutor = <
         list: () => sources.list(),
         remove: (sourceId: string) => sources.remove(sourceId),
         refresh: (sourceId: string) => sources.refresh(sourceId),
+        detect: (url: string) => sources.detect(url),
       },
 
       policies: {

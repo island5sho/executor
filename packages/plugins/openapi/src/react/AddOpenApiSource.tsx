@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAtomSet, useAtomValue, useAtomRefresh, Result } from "@effect-atom/atom-react";
 import { Option } from "effect";
 
@@ -413,9 +413,10 @@ function prefixForHeader(preset: HeaderPreset, headerName: string): string | und
 export default function AddOpenApiSource(props: {
   onComplete: () => void;
   onCancel: () => void;
+  initialUrl?: string;
 }) {
   // Spec input
-  const [specUrl, setSpecUrl] = useState("");
+  const [specUrl, setSpecUrl] = useState(props.initialUrl ?? "");
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
@@ -435,6 +436,14 @@ export default function AddOpenApiSource(props: {
   const doPreview = useAtomSet(previewOpenApiSpec, { mode: "promise" });
   const doAdd = useAtomSet(addOpenApiSpec, { mode: "promise" });
   const secrets = useAtomValue(secretsAtom());
+  const autoAnalyzed = useRef(false);
+
+  useEffect(() => {
+    if (props.initialUrl && !autoAnalyzed.current) {
+      autoAnalyzed.current = true;
+      handleAnalyze();
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const secretList: readonly SecretPickerSecret[] = Result.match(secrets, {
     onInitial: () => [] as SecretPickerSecret[],

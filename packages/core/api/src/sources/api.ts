@@ -39,6 +39,18 @@ const ToolMetadataResponse = Schema.Struct({
   mayElicit: Schema.optional(Schema.Boolean),
 });
 
+const DetectRequest = Schema.Struct({
+  url: Schema.String,
+});
+
+const DetectResultResponse = Schema.Struct({
+  kind: Schema.String,
+  confidence: Schema.Literal("high", "medium", "low"),
+  endpoint: Schema.String,
+  name: Schema.String,
+  namespace: Schema.String,
+});
+
 // ---------------------------------------------------------------------------
 // Group
 // ---------------------------------------------------------------------------
@@ -59,5 +71,10 @@ export class SourcesApi extends HttpApiGroup.make("sources")
   .add(
     HttpApiEndpoint.get("tools")`/scopes/${scopeIdParam}/sources/${sourceIdParam}/tools`
       .addSuccess(Schema.Array(ToolMetadataResponse)),
+  )
+  .add(
+    HttpApiEndpoint.post("detect")`/scopes/${scopeIdParam}/sources/detect`
+      .setPayload(DetectRequest)
+      .addSuccess(Schema.Array(DetectResultResponse)),
   )
   .prefix("/v1") {}

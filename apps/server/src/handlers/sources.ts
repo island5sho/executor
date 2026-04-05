@@ -50,5 +50,18 @@ export const SourcesHandlers = HttpApiBuilder.group(
             mayElicit: t.mayElicit,
           }));
         }),
+      )
+      .handle("detect", ({ path, payload }) =>
+        Effect.gen(function* () {
+          const executor = yield* ExecutorService;
+          const results = yield* executor.sources.detect(payload.url);
+          return results.map((r) => ({
+            kind: r.kind,
+            confidence: r.confidence,
+            endpoint: r.endpoint,
+            name: r.name,
+            namespace: r.namespace,
+          }));
+        }),
       ),
 );

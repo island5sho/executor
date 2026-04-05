@@ -4,6 +4,7 @@ import type { Layer } from "effect";
 
 import {
   Source,
+  SourceDetectionResult,
   definePlugin,
   registerRuntimeTools,
   runtimeTool,
@@ -201,7 +202,37 @@ export const openApiPlugin = (options?: {
               yield* ctx.tools.unregisterBySource(sourceId);
             }),
 
-          // TODO: refresh requires storing original config per namespace
+          detect: (url: string) =>
+            Effect.gen(function* () {
+              const trimmed = url.trim();
+              if (!trimmed) return null;
+              try { new URL(trimmed); } catch { return null; }
+
+              // Try fetching the URL and parsing as OpenAPI spec
+              // parse() handles both URLs directly and spec text
+              const doc = yield* parse(trimmed).pipe(
+                Effect.catchAll(() => Effect.succeed(null)),
+              );
+              if (!doc) return null;
+
+              const result = yield* extract(doc).pipe(
+                Effect.catchAll(() => Effect.succeed(null)),
+              );
+              if (!result) return null;
+
+              const namespace = Option.getOrElse(result.title, () => "api")
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "_");
+              const name = Option.getOrElse(result.title, () => namespace);
+
+              return new SourceDetectionResult({
+                kind: "openapi",
+                confidence: "high",
+                endpoint: trimmed,
+                name,
+                namespace,
+              });
+            }),
         });
 
         const addSpecInternal = (config: OpenApiSpecConfig) =>

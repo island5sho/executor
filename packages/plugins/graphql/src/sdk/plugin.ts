@@ -4,6 +4,7 @@ import type { Layer } from "effect";
 
 import {
   Source,
+  SourceDetectionResult,
   definePlugin,
   registerRuntimeTools,
   runtimeTool,
@@ -232,6 +233,30 @@ export const graphqlPlugin = (options?: {
               yield* operationStore.removeByNamespace(sourceId);
               yield* operationStore.removeSourceMeta(sourceId);
               yield* ctx.tools.unregisterBySource(sourceId);
+            }),
+
+          detect: (url: string) =>
+            Effect.gen(function* () {
+              const trimmed = url.trim();
+              if (!trimmed) return null;
+              try { new URL(trimmed); } catch { return null; }
+
+              const ok = yield* introspect(trimmed).pipe(
+                Effect.provide(httpClientLayer),
+                Effect.map(() => true),
+                Effect.catchAll(() => Effect.succeed(false)),
+              );
+
+              if (!ok) return null;
+
+              const name = namespaceFromEndpoint(trimmed);
+              return new SourceDetectionResult({
+                kind: "graphql",
+                confidence: "high",
+                endpoint: trimmed,
+                name,
+                namespace: name,
+              });
             }),
         });
 

@@ -27,6 +27,7 @@ export {
 // Sources
 export {
   Source,
+  SourceDetectionResult,
   SourceRegistry,
   makeInMemorySourceRegistry,
   type SourceManager,

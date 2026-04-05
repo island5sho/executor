@@ -69,3 +69,5 @@ export const removeSecret = ExecutorApiClient.mutation("secrets", "remove");
 export const removeSource = ExecutorApiClient.mutation("sources", "remove");
 
 export const refreshSource = ExecutorApiClient.mutation("sources", "refresh");
+
+export const detectSource = ExecutorApiClient.mutation("sources", "detect");
