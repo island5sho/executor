@@ -42,7 +42,7 @@ const formatDescription = (
     "- When you already know the namespace, narrow with `tools.discover({ namespace: \"github\", query: \"issues\" })`.",
     "- The `tools` object is a lazy proxy — `Object.keys(tools)` won't work. Use `tools.discover()` to find tools.",
     "- Pass an object to system tools, e.g. `tools.discover({ query: \"...\" })` or `tools.discover({ namespace: \"github\", query: \"issues\" })`, and `tools.describe.tool({ path })`.",
-    "- `tools.describe.tool()` returns compact TypeScript shapes only; JSON Schema is internal and not exposed here.",
+    "- `tools.describe.tool()` returns compact TypeScript shapes. Use `inputTypeScript`, `outputTypeScript`, and `typeScriptDefinitions`.",
     "- Do not use `fetch` — all API calls go through `tools.*`.",
     "- If execution pauses for interaction, resume it with the returned `resumePayload`.",
   ];
