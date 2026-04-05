@@ -25,5 +25,7 @@
     "@executor/plugin-openapi": "1.4.0-beta.0",
     "@executor/ui": "1.4.0-beta.0"
   },
-  "changesets": []
+  "changesets": [
+    "ripe-yaks-sniff"
+  ]
 }
