@@ -7,7 +7,7 @@ type TransportMode = "stdio" | "http";
 const isDev = import.meta.env.DEV;
 
 export function McpInstallCard(props: { className?: string }) {
-  const [mode, setMode] = useState<TransportMode>("http");
+  const [mode, setMode] = useState<TransportMode>("stdio");
   const [origin, setOrigin] = useState<string | null>(null);
 
   useEffect(() => {
@@ -17,8 +17,8 @@ export function McpInstallCard(props: { className?: string }) {
   const command =
     mode === "stdio"
       ? isDev
-        ? 'npx add-mcp "bun run executor mcp --stdio" --name "executor-stdio"'
-        : 'npx add-mcp "executor mcp --stdio" --name "executor-stdio"'
+        ? 'npx add-mcp "bun run executor mcp" --name "executor"'
+        : 'npx add-mcp "executor mcp" --name "executor"'
       : origin
         ? `npx add-mcp "${origin}/mcp" --transport http --name "executor"`
         : 'npx add-mcp "<this-server>/mcp" --transport http --name "executor"';

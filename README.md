@@ -20,11 +20,8 @@ This starts a local runtime with a web UI at `http://127.0.0.1:8788`. From there
 Point any MCP-compatible agent (Cursor, Claude Code, OpenCode, etc.) at Executor to share your tool catalog, auth, and policies across all of them.
 
 ```bash
-# HTTP
-executor mcp
 
-# stdio (for agent configs)
-executor mcp --stdio
+executor mcp
 ```
 
 Example `mcp.json` for Claude Code / Cursor:
@@ -34,7 +31,7 @@ Example `mcp.json` for Claude Code / Cursor:
   "mcpServers": {
     "executor": {
       "command": "executor",
-      "args": ["mcp", "--stdio"]
+      "args": ["mcp"]
     }
   }
 }
@@ -98,8 +95,7 @@ executor resume --execution-id exec_123
 
 ```bash
 executor web                        # start runtime + web UI
-executor mcp                        # start MCP endpoint (HTTP)
-executor mcp --stdio                # start MCP endpoint (stdio)
+executor mcp                        # start MCP endpoint
 executor call --file script.ts      # execute a file
 executor call '<code>'              # execute inline code
 executor call --stdin               # execute from stdin
