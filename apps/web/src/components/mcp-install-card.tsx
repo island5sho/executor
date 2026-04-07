@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Button } from "@executor/ui/components/button";
 import { CodeBlock } from "@executor/ui/components/code-block";
+import { useScopeInfo } from "@executor/react";
 
 type TransportMode = "stdio" | "http";
 
@@ -9,16 +10,19 @@ const isDev = import.meta.env.DEV;
 export function McpInstallCard(props: { className?: string }) {
   const [mode, setMode] = useState<TransportMode>("stdio");
   const [origin, setOrigin] = useState<string | null>(null);
+  const scopeInfo = useScopeInfo();
 
   useEffect(() => {
     setOrigin(window.location.origin);
   }, []);
 
+  const scopeFlag = scopeInfo.dir ? ` --scope ${JSON.stringify(scopeInfo.dir)}` : "";
+
   const command =
     mode === "stdio"
       ? isDev
-        ? 'npx add-mcp "bun run executor mcp" --name "executor"'
-        : 'npx add-mcp "executor mcp" --name "executor"'
+        ? `npx add-mcp "bun run dev:cli mcp${scopeFlag}" --name "executor"`
+        : `npx add-mcp "executor mcp${scopeFlag}" --name "executor"`
       : origin
         ? `npx add-mcp "${origin}/mcp" --transport http --name "executor"`
         : 'npx add-mcp "<this-server>/mcp" --transport http --name "executor"';

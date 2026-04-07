@@ -28,6 +28,7 @@
     "@executor/plugin-mcp",
     "@executor/plugin-onepassword",
     "@executor/plugin-openapi",
-    "@executor/ui"
+    "@executor/ui",
+    "@executor/marketing"
   ]
 }

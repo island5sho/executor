@@ -373,18 +373,35 @@ const resumeCommand = Command.make(
     }),
 ).pipe(Command.withDescription("Resume a paused execution"));
 
+const scope = Options.text("scope").pipe(
+  Options.optional,
+  Options.withDescription("Path to workspace directory containing executor.jsonc"),
+);
+
+const applyScope = (s: Option.Option<string>) => {
+  const dir = Option.getOrUndefined(s);
+  if (dir) process.env.EXECUTOR_SCOPE_DIR = resolve(dir);
+};
+
 const webCommand = Command.make(
   "web",
   {
     port: Options.integer("port").pipe(Options.withDefault(DEFAULT_PORT)),
+    scope,
   },
-  ({ port }) => runForegroundSession({ kind: "web", port }),
+  ({ port, scope }) => Effect.gen(function* () {
+    applyScope(scope);
+    yield* runForegroundSession({ kind: "web", port });
+  }),
 ).pipe(Command.withDescription("Start a foreground web session"));
 
 const mcpCommand = Command.make(
   "mcp",
-  {},
-  () => runStdioMcpSession(),
+  { scope },
+  ({ scope }) => Effect.gen(function* () {
+    applyScope(scope);
+    yield* runStdioMcpSession();
+  }),
 ).pipe(Command.withDescription("Start an MCP server over stdio"));
 
 // ---------------------------------------------------------------------------

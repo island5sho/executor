@@ -14,6 +14,7 @@ export const ScopeHandlers = HttpApiBuilder.group(
         return {
           id: executor.scope.id,
           name: executor.scope.name,
+          dir: executor.scope.name,
         };
       }),
     ),

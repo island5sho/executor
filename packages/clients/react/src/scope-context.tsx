@@ -7,6 +7,7 @@ import { scopeAtom } from "./atoms";
 export interface ScopeInfo {
   readonly id: ScopeId;
   readonly name: string;
+  readonly dir: string;
 }
 
 const ScopeContext = React.createContext<ScopeInfo | null>(null);

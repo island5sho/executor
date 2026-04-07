@@ -9,6 +9,7 @@ import { ScopeId } from "@executor/sdk";
 const ScopeInfoResponse = Schema.Struct({
   id: ScopeId,
   name: Schema.String,
+  dir: Schema.String,
 });
 
 // ---------------------------------------------------------------------------
