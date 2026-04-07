@@ -13,7 +13,7 @@
     "sourceMap": true,
     "jsx": "react-jsx",
     "paths": {
-      "@web/*": ["../web/src/*"]
+      "@web/*": ["../local/src/web/*"]
     },
     "plugins": [
       {

@@ -13,7 +13,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      "@web": resolve(__dirname, "../web/src"),
+      "@web": resolve(__dirname, "../local/src/web"),
     },
   },
   server: {
