@@ -13,8 +13,6 @@ import { Route as ToolsRouteImport } from './routes/tools'
 import { Route as SecretsRouteImport } from './routes/secrets'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as SourcesNamespaceRouteImport } from './routes/sources.$namespace'
-import { Route as McpSplatRouteImport } from './routes/mcp.$'
-import { Route as ApiSplatRouteImport } from './routes/api.$'
 import { Route as SourcesAddPluginKeyRouteImport } from './routes/sources.add.$pluginKey'
 
 const ToolsRoute = ToolsRouteImport.update({
@@ -37,16 +35,6 @@ const SourcesNamespaceRoute = SourcesNamespaceRouteImport.update({
   path: '/sources/$namespace',
   getParentRoute: () => rootRouteImport,
 } as any)
-const McpSplatRoute = McpSplatRouteImport.update({
-  id: '/mcp/$',
-  path: '/mcp/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ApiSplatRoute = ApiSplatRouteImport.update({
-  id: '/api/$',
-  path: '/api/$',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const SourcesAddPluginKeyRoute = SourcesAddPluginKeyRouteImport.update({
   id: '/sources/add/$pluginKey',
   path: '/sources/add/$pluginKey',
@@ -57,8 +45,6 @@ export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/secrets': typeof SecretsRoute
   '/tools': typeof ToolsRoute
-  '/api/$': typeof ApiSplatRoute
-  '/mcp/$': typeof McpSplatRoute
   '/sources/$namespace': typeof SourcesNamespaceRoute
   '/sources/add/$pluginKey': typeof SourcesAddPluginKeyRoute
 }
@@ -66,8 +52,6 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/secrets': typeof SecretsRoute
   '/tools': typeof ToolsRoute
-  '/api/$': typeof ApiSplatRoute
-  '/mcp/$': typeof McpSplatRoute
   '/sources/$namespace': typeof SourcesNamespaceRoute
   '/sources/add/$pluginKey': typeof SourcesAddPluginKeyRoute
 }
@@ -76,8 +60,6 @@ export interface FileRoutesById {
   '/': typeof IndexRoute
   '/secrets': typeof SecretsRoute
   '/tools': typeof ToolsRoute
-  '/api/$': typeof ApiSplatRoute
-  '/mcp/$': typeof McpSplatRoute
   '/sources/$namespace': typeof SourcesNamespaceRoute
   '/sources/add/$pluginKey': typeof SourcesAddPluginKeyRoute
 }
@@ -87,8 +69,6 @@ export interface FileRouteTypes {
     | '/'
     | '/secrets'
     | '/tools'
-    | '/api/$'
-    | '/mcp/$'
     | '/sources/$namespace'
     | '/sources/add/$pluginKey'
   fileRoutesByTo: FileRoutesByTo
@@ -96,8 +76,6 @@ export interface FileRouteTypes {
     | '/'
     | '/secrets'
     | '/tools'
-    | '/api/$'
-    | '/mcp/$'
     | '/sources/$namespace'
     | '/sources/add/$pluginKey'
   id:
@@ -105,8 +83,6 @@ export interface FileRouteTypes {
     | '/'
     | '/secrets'
     | '/tools'
-    | '/api/$'
-    | '/mcp/$'
     | '/sources/$namespace'
     | '/sources/add/$pluginKey'
   fileRoutesById: FileRoutesById
@@ -115,8 +91,6 @@ export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   SecretsRoute: typeof SecretsRoute
   ToolsRoute: typeof ToolsRoute
-  ApiSplatRoute: typeof ApiSplatRoute
-  McpSplatRoute: typeof McpSplatRoute
   SourcesNamespaceRoute: typeof SourcesNamespaceRoute
   SourcesAddPluginKeyRoute: typeof SourcesAddPluginKeyRoute
 }
@@ -151,20 +125,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof SourcesNamespaceRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/mcp/$': {
-      id: '/mcp/$'
-      path: '/mcp/$'
-      fullPath: '/mcp/$'
-      preLoaderRoute: typeof McpSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/api/$': {
-      id: '/api/$'
-      path: '/api/$'
-      fullPath: '/api/$'
-      preLoaderRoute: typeof ApiSplatRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/sources/add/$pluginKey': {
       id: '/sources/add/$pluginKey'
       path: '/sources/add/$pluginKey'
@@ -179,8 +139,6 @@ const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   SecretsRoute: SecretsRoute,
   ToolsRoute: ToolsRoute,
-  ApiSplatRoute: ApiSplatRoute,
-  McpSplatRoute: McpSplatRoute,
   SourcesNamespaceRoute: SourcesNamespaceRoute,
   SourcesAddPluginKeyRoute: SourcesAddPluginKeyRoute,
 }
@@ -189,10 +147,11 @@ export const routeTree = rootRouteImport
   ._addFileTypes<FileRouteTypes>()
 
 import type { getRouter } from './router.tsx'
-import type { createStart } from '@tanstack/react-start'
+import type { startInstance } from './start.ts'
 declare module '@tanstack/react-start' {
   interface Register {
     ssr: true
     router: Awaited<ReturnType<typeof getRouter>>
+    config: Awaited<ReturnType<typeof startInstance.getOptions>>
   }
 }
