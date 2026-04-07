@@ -3,9 +3,9 @@
 // ---------------------------------------------------------------------------
 
 import { eq, and } from "drizzle-orm";
-import type { PgDatabase } from "drizzle-orm/pg-core";
 
 import { users, teams, teamMembers, invitations, sessions } from "./schema";
+import type { DrizzleDb } from "./types";
 
 export type User = typeof users.$inferSelect;
 export type Team = typeof teams.$inferSelect;
@@ -13,7 +13,7 @@ export type TeamMember = typeof teamMembers.$inferSelect;
 export type Invitation = typeof invitations.$inferSelect;
 export type Session = typeof sessions.$inferSelect;
 
-export const makeUserStore = (db: PgDatabase<any, any, any>) => ({
+export const makeUserStore = (db: DrizzleDb) => ({
   // --- Users ---
 
   upsertUser: async (user: { id: string; email: string; name?: string; avatarUrl?: string }) => {
