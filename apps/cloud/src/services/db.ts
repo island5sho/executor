@@ -1,6 +1,9 @@
 // ---------------------------------------------------------------------------
 // Database service — Hyperdrive on Cloudflare, node-postgres for local dev
 // ---------------------------------------------------------------------------
+//
+// Migrations are run out-of-band (e.g. via a separate script or CI step),
+// not at request time — Cloudflare Workers cannot read the filesystem.
 
 import { Context, Effect, Layer } from "effect";
 import * as sharedSchema from "@executor/storage-postgres/schema";
@@ -12,60 +15,57 @@ const schema = { ...sharedSchema, ...cloudSchema };
 
 export type { DrizzleDb };
 
-// Migrations are run out-of-band (e.g. via a separate script or CI step),
-// not at request time — Cloudflare Workers cannot read the filesystem.
+// ---------------------------------------------------------------------------
+// Connection string resolution
+// ---------------------------------------------------------------------------
 
-type DbResource = {
-  readonly db: DrizzleDb;
-  readonly close: () => Promise<void>;
-};
-
-const createDbResource = async (): Promise<DbResource> => {
-  // Resolve connection string: prefer Hyperdrive binding, fall back to DATABASE_URL env
-  let connectionString: string | undefined;
-  try {
+const resolveHyperdriveUrl = Effect.tryPromise({
+  try: async () => {
     const { env } = await import("cloudflare:workers");
     const hyperdrive = (env as any).HYPERDRIVE;
-    if (hyperdrive?.connectionString) {
-      connectionString = hyperdrive.connectionString;
-    }
-  } catch {
-    // Not running on Cloudflare — fall back to env var
-  }
-  connectionString ??= server.DATABASE_URL || undefined;
+    return (hyperdrive?.connectionString as string) ?? null;
+  },
+  catch: () => null,
+}).pipe(Effect.map((v) => v ?? undefined));
 
-  if (connectionString) {
+const resolveConnectionString = resolveHyperdriveUrl.pipe(
+  Effect.map((url) => url ?? (server.DATABASE_URL || undefined)),
+);
+
+// ---------------------------------------------------------------------------
+// Postgres via node-postgres (used with Hyperdrive or DATABASE_URL)
+// ---------------------------------------------------------------------------
+
+const acquirePostgres = (connectionString: string) =>
+  Effect.tryPromise(async () => {
     const { drizzle } = await import("drizzle-orm/node-postgres");
     const { Pool } = await import("pg");
     const pool = new Pool({ connectionString });
-    const db = drizzle(pool, { schema }) as DrizzleDb;
-    return {
-      db,
-      close: () => pool.end(),
-    };
-  }
+    return { db: drizzle(pool, { schema }) as DrizzleDb, pool };
+  });
 
-  // Local dev fallback: PGlite
+const releasePostgres = ({ pool }: { pool: { end: () => Promise<void> } }) =>
+  Effect.promise(() => pool.end()).pipe(Effect.orElseSucceed(() => undefined));
+
+// ---------------------------------------------------------------------------
+// PGlite — local dev fallback
+// ---------------------------------------------------------------------------
+
+const acquirePglite = Effect.tryPromise(async () => {
   const { PGlite } = await import("@electric-sql/pglite");
   const { drizzle } = await import("drizzle-orm/pglite");
-  const dataDir = server.PGLITE_DATA_DIR;
-  const client = new PGlite(dataDir);
-  const db = drizzle(client, { schema }) as DrizzleDb;
-  return {
-    db,
-    close: async () => {
-      const closeClient = client.close;
-      if (closeClient) {
-        await closeClient.call(client);
-      }
-    },
-  };
-};
+  const client = new PGlite(server.PGLITE_DATA_DIR);
+  return { db: drizzle(client, { schema }) as DrizzleDb, client };
+});
 
-const closeDbResource = (resource: DbResource) =>
-  Effect.promise(() => resource.close()).pipe(
+const releasePglite = ({ client }: { client: { close?: () => Promise<void> } }) =>
+  Effect.promise(() => client.close?.() ?? Promise.resolve()).pipe(
     Effect.orElseSucceed(() => undefined),
   );
+
+// ---------------------------------------------------------------------------
+// Service
+// ---------------------------------------------------------------------------
 
 export class DbService extends Context.Tag("@executor/cloud/DbService")<
   DbService,
@@ -73,9 +73,19 @@ export class DbService extends Context.Tag("@executor/cloud/DbService")<
 >() {
   static Live = Layer.scoped(
     this,
-    Effect.acquireRelease(
-      Effect.promise(() => createDbResource()),
-      closeDbResource,
-    ).pipe(Effect.map((resource) => resource.db)),
+    Effect.gen(function* () {
+      const connectionString = yield* resolveConnectionString;
+
+      if (connectionString) {
+        const { db } = yield* Effect.acquireRelease(
+          acquirePostgres(connectionString),
+          releasePostgres,
+        );
+        return db;
+      }
+
+      const { db } = yield* Effect.acquireRelease(acquirePglite, releasePglite);
+      return db;
+    }),
   );
 }
