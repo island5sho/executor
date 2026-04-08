@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@napi-rs/keyring": "^1.2.0",
-    "@executor/sdk": "workspace:*",
+    "@executor/core": "workspace:*",
     "effect": "catalog:"
   },
   "devDependencies": {

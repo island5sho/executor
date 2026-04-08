@@ -16,7 +16,8 @@
   },
   "dependencies": {
     "@effect/platform": "catalog:",
-    "@executor/sdk": "workspace:*",
+    "@effect/platform-node": "catalog:",
+    "@executor/core": "workspace:*",
     "effect": "catalog:"
   },
   "peerDependencies": {

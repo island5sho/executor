@@ -4,7 +4,8 @@
 
 import { Effect } from "effect";
 
-import { createExecutor } from "@executor/sdk";
+import { createExecutor } from "@executor/core";
+import type { DrizzleDb } from "@executor/storage-postgres";
 import { makePgConfig, makePgKv } from "@executor/storage-postgres";
 import {
   openApiPlugin,
