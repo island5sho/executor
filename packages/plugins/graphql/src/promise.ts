@@ -2,5 +2,11 @@ import { graphqlPlugin as _graphqlPlugin } from "./sdk/plugin";
 
 export type { GraphqlSourceConfig } from "./sdk/plugin";
 export type { HeaderValue } from "./sdk/types";
+export type { GraphqlOperationStore } from "./sdk/operation-store";
 
-export const graphqlPlugin = (options?: {}) => _graphqlPlugin(options);
+export interface GraphqlPluginOptions {
+  readonly operationStore?: import("./sdk/operation-store").GraphqlOperationStore;
+}
+
+export const graphqlPlugin = (options?: GraphqlPluginOptions) =>
+  _graphqlPlugin(options);
