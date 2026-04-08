@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@effect-atom/atom-react": "^0.5.0",
     "@effect/platform": "catalog:",
-    "@effect/platform-bun": "catalog:",
-    "@effect/sql-pg": "^0.28.0",
+    "@executor/api": "workspace:*",
     "@executor/execution": "workspace:*",
     "@executor/plugin-google-discovery": "workspace:*",
     "@executor/plugin-graphql": "workspace:*",

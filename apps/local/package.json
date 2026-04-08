@@ -7,6 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@effect-atom/atom-react": "^0.5.0",
     "@effect/platform": "catalog:",
     "@effect/platform-node": "catalog:",
     "@effect/sql": "catalog:",
@@ -26,16 +27,11 @@
     "@executor/sdk": "workspace:*",
     "@executor/storage-file": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "@shikijs/langs": "^4.0.2",
-    "@shikijs/themes": "^4.0.2",
     "@tanstack/react-router": "catalog:",
     "@tanstack/react-start": "catalog:",
     "effect": "catalog:",
     "react": "catalog:",
-    "react-dom": "catalog:",
-    "shiki": "^4.0.2",
-    "streamdown": "^2.5.0",
-    "tailwindcss": "catalog:"
+    "react-dom": "catalog:"
   },
   "devDependencies": {
     "@tailwindcss/vite": "catalog:",

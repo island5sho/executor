@@ -16,7 +16,6 @@
   },
   "dependencies": {
     "@effect/platform": "catalog:",
-    "@effect/platform-node": "catalog:",
     "@executor/sdk": "workspace:*",
     "effect": "catalog:"
   },

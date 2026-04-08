@@ -16,7 +16,6 @@
     "wrangler": "^4.0.0"
   },
   "dependencies": {
-    "@astrojs/tailwind": "^6.0.2",
     "@astrojs/cloudflare": "^13.0.0",
     "@executor/sdk": "workspace:*",
     "@executor/plugin-openapi": "workspace:*",
