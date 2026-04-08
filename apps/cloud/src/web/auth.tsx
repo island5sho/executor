@@ -23,9 +23,10 @@ type AuthTeam = {
 // Auth atom — typed query against CloudAuthApi
 // ---------------------------------------------------------------------------
 
-export const authAtom = CloudApiClient.query("cloudAuth", "me", {
-  timeToLive: "5 minutes",
-});
+export const authAtom =
+  CloudApiClient.query("cloudAuth", "me", {
+    timeToLive: "5 minutes",
+  });
 
 // ---------------------------------------------------------------------------
 // Provider + hook
