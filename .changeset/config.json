@@ -13,7 +13,6 @@
     "@executor/api",
     "@executor/config",
     "@executor/execution",
-    "@executor/sdk",
     "@executor/storage-file",
     "@executor/host-mcp",
     "@executor/codemode-core",
