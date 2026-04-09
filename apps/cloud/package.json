@@ -33,12 +33,13 @@
     "react-dom": "catalog:"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250620.0",
     "@tailwindcss/vite": "catalog:",
     "@types/pg": "^8.15.4",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
     "@vitejs/plugin-react": "catalog:",
-    "@cloudflare/workers-types": "^4.20250620.0",
+    "drizzle-kit": "^0.31.10",
     "portless": "^0.10.1",
     "typescript": "catalog:",
     "vite": "catalog:",

@@ -1,7 +1,8 @@
 // ---------------------------------------------------------------------------
-// Cloud API — protected core API + public auth endpoints
+// Cloud API — three layers: public, session-authenticated, org-authenticated
 // ---------------------------------------------------------------------------
 
+import { env } from "cloudflare:workers";
 import {
   HttpApi,
   HttpApiBuilder,
@@ -11,9 +12,8 @@ import {
   HttpServer,
 } from "@effect/platform";
 import { Effect, Layer } from "effect";
-import { setCookie } from "@tanstack/react-start/server";
 
-import { addGroup } from "@executor/api";
+import { CoreExecutorApi } from "@executor/api";
 import { CoreHandlers, ExecutorService, ExecutionEngineService } from "@executor/api/server";
 import { createExecutionEngine } from "@executor/execution";
 import { makeDynamicWorkerExecutor, type CodeExecutor } from "@executor/runtime-dynamic-worker";
@@ -27,41 +27,41 @@ import {
 import { GraphqlGroup, GraphqlExtensionService, GraphqlHandlers } from "@executor/plugin-graphql/api";
 
 import { CloudAuthApi, CloudAuthPublicApi } from "./auth/api";
-import { AuthContext, UserStoreService } from "./auth/context";
-import { CloudAuthHandlers, CloudAuthPublicHandlers } from "./auth/handlers";
+import { OrgAuth, OrgAuthLive, SessionAuthLive } from "./auth/middleware";
+import { UserStoreService } from "./auth/context";
+import {
+  CloudAuthPublicHandlers,
+  CloudSessionAuthHandlers,
+} from "./auth/handlers";
 import { WorkOSAuth } from "./auth/workos";
 import { DbService } from "./services/db";
-import { createTeamExecutor } from "./services/executor";
+import { createOrgExecutor } from "./services/executor";
 import { server } from "./env";
 
-const ProtectedCloudApi = addGroup(OpenApiGroup)
+// ---------------------------------------------------------------------------
+// API definitions
+// ---------------------------------------------------------------------------
+
+/** Protected (org-required) API — all the executor groups + OrgAuth middleware */
+const ProtectedCloudApi = CoreExecutorApi
+  .add(OpenApiGroup)
   .add(McpGroup)
   .add(GoogleDiscoveryGroup)
   .add(GraphqlGroup)
-  .add(CloudAuthApi);
+  .middleware(OrgAuth);
 
-const PublicCloudApi = HttpApi.make("cloudPublic")
-  .add(CloudAuthPublicApi);
+/** Session-only API — just the auth endpoints (SessionAuth on the group) */
+const SessionCloudApi = HttpApi.make("cloudSession").add(CloudAuthApi);
 
-const ProtectedCloudApiLive = HttpApiBuilder.api(ProtectedCloudApi).pipe(
-  Layer.provide(CoreHandlers),
-  Layer.provide(Layer.mergeAll(
-    OpenApiHandlers,
-    McpHandlers,
-    GoogleDiscoveryHandlers,
-    GraphqlHandlers,
-    CloudAuthHandlers,
-  )),
-);
+/** Public API — login + callback, no auth */
+const PublicCloudApi = HttpApi.make("cloudPublic").add(CloudAuthPublicApi);
 
-const PublicCloudApiLive = HttpApiBuilder.api(PublicCloudApi).pipe(
-  Layer.provide(CloudAuthPublicHandlers),
-);
+// ---------------------------------------------------------------------------
+// Layers
+// ---------------------------------------------------------------------------
 
 const DbLive = DbService.Live;
-const UserStoreLive = UserStoreService.Live.pipe(
-  Layer.provide(DbLive),
-);
+const UserStoreLive = UserStoreService.Live.pipe(Layer.provide(DbLive));
 
 const SharedServices = Layer.mergeAll(
   DbLive,
@@ -70,177 +70,153 @@ const SharedServices = Layer.mergeAll(
   HttpServer.layerContext,
 );
 
-let _publicApiHandler: ReturnType<typeof HttpApiBuilder.toWebHandler> | null = null;
-const getPublicApiHandler = () => {
-  if (!_publicApiHandler) {
-    _publicApiHandler = HttpApiBuilder.toWebHandler(
-      PublicCloudApiLive.pipe(
+const ProtectedCloudApiLive = HttpApiBuilder.api(ProtectedCloudApi).pipe(
+  Layer.provide(
+    Layer.mergeAll(
+      CoreHandlers,
+      OpenApiHandlers,
+      McpHandlers,
+      GoogleDiscoveryHandlers,
+      GraphqlHandlers,
+      OrgAuthLive,
+    ),
+  ),
+);
+
+const SessionCloudApiLive = HttpApiBuilder.api(SessionCloudApi).pipe(
+  Layer.provide(CloudSessionAuthHandlers),
+  Layer.provideMerge(SessionAuthLive),
+);
+
+const PublicCloudApiLive = HttpApiBuilder.api(PublicCloudApi).pipe(
+  Layer.provide(CloudAuthPublicHandlers),
+);
+
+// ---------------------------------------------------------------------------
+// Static web handlers — built once at module load
+// ---------------------------------------------------------------------------
+
+const RouterConfig = HttpRouter.setRouterConfig({ maxParamLength: 1000 });
+
+const publicHandler = HttpApiBuilder.toWebHandler(
+  PublicCloudApiLive.pipe(
+    Layer.provideMerge(SharedServices),
+    Layer.provideMerge(RouterConfig),
+  ),
+  { middleware: HttpMiddleware.logger },
+);
+
+const sessionHandler = HttpApiBuilder.toWebHandler(
+  SessionCloudApiLive.pipe(
+    Layer.provideMerge(SharedServices),
+    Layer.provideMerge(RouterConfig),
+  ),
+  { middleware: HttpMiddleware.logger },
+);
+
+// ---------------------------------------------------------------------------
+// Protected handler — must be built per-request because the executor varies
+// ---------------------------------------------------------------------------
+
+const buildProtectedHandler = (
+  organizationId: string,
+  organizationName: string,
+  codeExecutor: CodeExecutor,
+) =>
+  Effect.gen(function* () {
+    const executor = yield* createOrgExecutor(
+      organizationId,
+      organizationName,
+      server.ENCRYPTION_KEY,
+    );
+
+    const engine = createExecutionEngine({ executor, codeExecutor });
+
+    const requestServices = Layer.mergeAll(
+      Layer.succeed(ExecutorService, executor),
+      Layer.succeed(ExecutionEngineService, engine),
+      Layer.succeed(OpenApiExtensionService, executor.openapi),
+      Layer.succeed(McpExtensionService, executor.mcp),
+      Layer.succeed(GoogleDiscoveryExtensionService, executor.googleDiscovery),
+      Layer.succeed(GraphqlExtensionService, executor.graphql),
+    );
+
+    return HttpApiBuilder.toWebHandler(
+      HttpApiSwagger.layer({ path: "/docs" }).pipe(
+        Layer.provideMerge(HttpApiBuilder.middlewareOpenApi()),
+        Layer.provideMerge(ProtectedCloudApiLive),
+        Layer.provideMerge(requestServices),
         Layer.provideMerge(SharedServices),
         Layer.provideMerge(HttpRouter.setRouterConfig({ maxParamLength: 1000 })),
       ),
       { middleware: HttpMiddleware.logger },
     );
-  }
-  return _publicApiHandler;
-};
+  });
 
-const parseCookie = (cookieHeader: string | null, name: string): string | null => {
-  if (!cookieHeader) return null;
-  const match = cookieHeader
-    .split(";")
-    .map((value) => value.trim())
-    .find((value) => value.startsWith(`${name}=`));
-  if (!match) return null;
-  return match.slice(name.length + 1) || null;
-};
-
+// ---------------------------------------------------------------------------
+// Routing
+// ---------------------------------------------------------------------------
 
 const isPublicPath = (pathname: string): boolean =>
   pathname === "/auth/login" || pathname === "/auth/callback";
 
-const unauthorized = (message: string): Response =>
-  Response.json({ error: message }, { status: 401 });
+const isSessionPath = (pathname: string): boolean =>
+  pathname === "/auth/me" ||
+  pathname === "/auth/logout" ||
+  pathname === "/auth/organization";
 
-const COOKIE_OPTIONS = {
-  path: "/",
-  httpOnly: true,
-  sameSite: "lax" as const,
-  maxAge: 60 * 60 * 24 * 7,
-  secure: server.NODE_ENV === "production",
-};
-
-const resolveAuth = (request: Request) =>
+/**
+ * Resolve the user's organization for executor creation. Reads from the
+ * session cookie via WorkOS — if there's no org we fall through to the
+ * session handler which will reject with NoOrganization for non-session paths.
+ */
+const lookupOrgForRequest = (request: Request) =>
   Effect.gen(function* () {
     const workos = yield* WorkOSAuth;
-    return yield* workos.authenticateRequest(request);
-  });
-
-const resolveTeamId = (
-  userId: string,
-  cookieTeamId: string | null,
-) =>
-  Effect.gen(function* () {
+    const result = yield* workos.authenticateRequest(request);
+    if (!result || !result.organizationId) return null;
     const users = yield* UserStoreService;
-    const teams = yield* users.use((store) => store.getTeamsForUser(userId));
-
-    if (cookieTeamId) {
-      const hasAccess = teams.some((t) => t.teamId === cookieTeamId);
-      if (hasAccess) return cookieTeamId;
-    }
-
-    if (teams.length > 0) return teams[0]!.teamId;
-
-    return yield* Effect.fail(new Error("No team found — user may not have completed signup"));
+    const org = yield* users.use((s) =>
+      s.getOrganization(result.organizationId!),
+    );
+    return org;
   });
-
-const resolveExecutor = (teamId: string) =>
-  Effect.gen(function* () {
-    const users = yield* UserStoreService;
-    const team = yield* users.use((store) => store.getTeam(teamId));
-    const teamName = team?.name ?? "Unknown Team";
-    const encryptionKey = server.ENCRYPTION_KEY;
-    return yield* createTeamExecutor(teamId, teamName, encryptionKey);
-  });
-
-type ResolvedAuth = Exclude<Effect.Effect.Success<ReturnType<typeof resolveAuth>>, null>;
-type TeamExecutor = Effect.Effect.Success<ReturnType<typeof resolveExecutor>>;
-
-const createProtectedHandler = (
-  auth: ResolvedAuth,
-  teamId: string,
-  executor: TeamExecutor,
-  codeExecutor: CodeExecutor,
-) => {
-  const engine = createExecutionEngine({ executor, codeExecutor });
-
-  const requestServices = Layer.mergeAll(
-    Layer.succeed(AuthContext, {
-      userId: auth.userId,
-      teamId,
-      email: auth.email,
-      name: `${auth.firstName ?? ""} ${auth.lastName ?? ""}`.trim() || null,
-      avatarUrl: auth.avatarUrl ?? null,
-    }),
-    Layer.succeed(ExecutorService, executor),
-    Layer.succeed(ExecutionEngineService, engine),
-    Layer.succeed(OpenApiExtensionService, executor.openapi),
-    Layer.succeed(McpExtensionService, executor.mcp),
-    Layer.succeed(GoogleDiscoveryExtensionService, executor.googleDiscovery),
-    Layer.succeed(GraphqlExtensionService, executor.graphql),
-  );
-
-  return HttpApiBuilder.toWebHandler(
-    HttpApiSwagger.layer({ path: "/docs" }).pipe(
-      Layer.provideMerge(HttpApiBuilder.middlewareOpenApi()),
-      Layer.provideMerge(ProtectedCloudApiLive),
-      Layer.provideMerge(requestServices),
-      Layer.provideMerge(SharedServices),
-      Layer.provideMerge(HttpRouter.setRouterConfig({ maxParamLength: 1000 })),
-    ),
-    { middleware: HttpMiddleware.logger },
-  );
-};
-
-const closeExecutor = (executor: TeamExecutor) =>
-  executor.close().pipe(
-    Effect.orElseSucceed(() => undefined),
-  );
-
-type ProtectedHandler = ReturnType<typeof createProtectedHandler>;
-
-const disposeProtectedHandler = (handler: ProtectedHandler) =>
-  Effect.promise(() => handler.dispose()).pipe(
-    Effect.orElseSucceed(() => undefined),
-  );
 
 export const handleApiRequest = async (request: Request): Promise<Response> => {
   const pathname = new URL(request.url).pathname;
 
   if (isPublicPath(pathname)) {
-    return getPublicApiHandler().handler(request);
+    return publicHandler.handler(request);
   }
 
-  const requestProgram = Effect.gen(function* () {
-    const auth = yield* resolveAuth(request);
-    if (!auth) return unauthorized("Unauthorized");
+  if (isSessionPath(pathname)) {
+    return sessionHandler.handler(request);
+  }
 
-    const cookieTeamId = parseCookie(request.headers.get("cookie"), "executor_team");
-    const teamId = yield* resolveTeamId(auth.userId, cookieTeamId);
-
-    const executor = yield* Effect.acquireRelease(
-      resolveExecutor(teamId),
-      closeExecutor,
-    );
-
-    const handler = yield* Effect.acquireRelease(
-      Effect.tryPromise(async () => {
-        const { env } = await import("cloudflare:workers");
-        const codeExecutor = makeDynamicWorkerExecutor({ loader: (env as any).LOADER });
-        return createProtectedHandler(auth, teamId, executor, codeExecutor);
-      }),
-      disposeProtectedHandler,
-    );
-
-    const response = yield* Effect.promise(() => handler.handler(request));
-
-    const refreshedSession = auth.refreshedSession;
-    if (refreshedSession) {
-      yield* Effect.sync(() => {
-        setCookie("wos-session", refreshedSession, COOKIE_OPTIONS);
-      });
+  // Protected path — needs an org-scoped executor
+  const program = Effect.gen(function* () {
+    const org = yield* lookupOrgForRequest(request);
+    if (!org) {
+      // No org — let the protected handler reject via OrgAuth middleware
+      // (it will return 403 NoOrganization)
+      return null;
     }
-    if (!cookieTeamId) {
-      yield* Effect.sync(() => {
-        setCookie("executor_team", teamId, COOKIE_OPTIONS);
-      });
-    }
-    return response;
+
+    const codeExecutor = makeDynamicWorkerExecutor({ loader: env.LOADER });
+    const handler = yield* buildProtectedHandler(org.id, org.name, codeExecutor);
+    return yield* Effect.promise(() => handler.handler(request));
   });
 
-  return Effect.runPromise(
-    requestProgram.pipe(
+  const result = await Effect.runPromise(
+    program.pipe(
       Effect.provide(SharedServices),
       Effect.scoped,
     ),
   );
+
+  if (result === null) {
+    // Fall through to session handler so it returns the proper error
+    return sessionHandler.handler(request);
+  }
+  return result;
 };
