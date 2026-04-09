@@ -16,9 +16,11 @@
     "effect": "catalog:"
   },
   "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.14.2",
     "@cloudflare/workers-types": "^4.20250620.0",
     "@effect/vitest": "catalog:",
     "@types/node": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "wrangler": "^4.81.0"
   }
 }
