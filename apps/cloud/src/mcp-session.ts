@@ -5,7 +5,7 @@
 import { DurableObject, env } from "cloudflare:workers";
 import { Effect, Layer } from "effect";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { WorkerTransport, type TransportState } from "agents/mcp";
 
 import { createExecutorMcpServer } from "@executor/host-mcp";
 import { makeDynamicWorkerExecutor } from "@executor/runtime-dynamic-worker";
@@ -72,9 +72,21 @@ const connectDb = async (): Promise<DrizzleDb> => {
 
 export class McpSessionDO extends DurableObject {
   private mcpServer: McpServer | null = null;
-  private transport: WebStandardStreamableHTTPServerTransport | null = null;
+  private transport: WorkerTransport | null = null;
   private initialized = false;
   private lastActivityMs = 0;
+
+  /** DO-backed storage adapter for WorkerTransport state persistence. */
+  private makeStorage() {
+    return {
+      get: async (): Promise<TransportState | undefined> => {
+        return await this.ctx.storage.get<TransportState>("transport");
+      },
+      set: async (state: TransportState): Promise<void> => {
+        await this.ctx.storage.put("transport", state);
+      },
+    };
+  }
 
   /**
    * Initialize the MCP session — resolves team, creates executor + engine + server.
@@ -102,8 +114,9 @@ export class McpSessionDO extends DurableObject {
 
     this.mcpServer = await createExecutorMcpServer({ executor, codeExecutor });
 
-    this.transport = new WebStandardStreamableHTTPServerTransport({
+    this.transport = new WorkerTransport({
       sessionIdGenerator: () => this.ctx.id.toString(),
+      storage: this.makeStorage(),
     });
 
     await this.mcpServer.connect(this.transport);
@@ -115,7 +128,8 @@ export class McpSessionDO extends DurableObject {
   }
 
   /**
-   * Handle an MCP request. The transport manages the full MCP protocol.
+   * Handle an MCP request. The transport manages the full MCP protocol
+   * including SSE keepalive pings and session state persistence.
    */
   async handleRequest(request: Request): Promise<Response> {
     if (!this.initialized || !this.transport) {
@@ -161,7 +175,7 @@ export class McpSessionDO extends DurableObject {
       await this.cleanup();
       return;
     }
-    // Still active — schedule next heartbeat
+    // Still active — schedule next heartbeat to prevent eviction
     await this.ctx.storage.setAlarm(Date.now() + HEARTBEAT_MS);
   }
 
