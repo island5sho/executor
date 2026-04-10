@@ -8,7 +8,7 @@
 export type ExecutorOptions = {
   /** Maximum number of retry attempts (default: 0) */
   retries?: number;
-  /** Delay in ms between retries (default: 0) */
+  /** Delay in ms between retries (default: 100) */
   retryDelay?: number;
   /** Timeout in ms before task is aborted (default: none) */
   timeout?: number;
@@ -37,7 +37,8 @@ export async function execute<T>(
   task: () => Promise<T>,
   options: ExecutorOptions = {}
 ): Promise<ExecutorResult<T>> {
-  const { retries = 0, retryDelay = 0, timeout, label } = options;
+  // Default retryDelay to 100ms instead of 0 — immediate retries hammer the service
+  const { retries = 0, retryDelay = 100, timeout, label } = options;
   const maxAttempts = retries + 1;
   const startTime = Date.now();
 
@@ -102,25 +103,4 @@ export async function executeAll<T>(
   async function runNext(): Promise<void> {
     const item = queue.shift();
     if (!item) return;
-    results[item.index] = await execute(item.task, options);
-  }
-
-  while (queue.length > 0 || inFlight.length > 0) {
-    while (inFlight.length < concurrency && queue.length > 0) {
-      const p = runNext().then(() => {
-        inFlight.splice(inFlight.indexOf(p), 1);
-      });
-      inFlight.push(p);
-    }
-    if (inFlight.length > 0) {
-      await Promise.race(inFlight);
-    }
-  }
-
-  return results;
-}
-
-/** Utility: resolves after a given number of milliseconds */
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+    resul
