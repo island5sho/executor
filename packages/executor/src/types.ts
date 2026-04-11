@@ -25,6 +25,8 @@ export interface ExecutorConfig {
   failFast?: boolean;
   /** Whether to log task lifecycle events to console (useful for debugging) */
   debug?: boolean;
+  /** Whether to include cancelled tasks in the failed array of BatchResult */
+  includeCancelledInFailed?: boolean;
 }
 
 /**
@@ -77,6 +79,8 @@ export interface BatchResult<TOutput = unknown> {
   succeeded: TaskResult<TOutput>[];
   /** Tasks that failed */
   failed: TaskResult<TOutput>[];
+  /** Tasks that were cancelled - useful to distinguish from actual failures */
+  cancelled: TaskResult<TOutput>[];
   /** Total wall-clock duration for the batch in milliseconds */
   totalDurationMs: number;
 }
@@ -99,6 +103,4 @@ export interface TaskEvent<TOutput = unknown> {
 export type TaskEventListener<TOutput = unknown> = (event: TaskEvent<TOutput>) => void;
 
 /**
- * Utility type: extract the output type from a Task.
- */
-export type InferOutput<T> = T extends Task<unknown, infer O> ? O : never;
+ * Utility type: extrac
