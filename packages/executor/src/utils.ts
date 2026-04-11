@@ -24,7 +24,8 @@ export function calculateBackoff(
   maxDelay: number = 30000
 ): number {
   const exponential = baseDelay * Math.pow(2, attempt);
-  const jitter = Math.random() * 0.1 * exponential;
+  // Increase jitter to 20% to better spread out retries under load
+  const jitter = Math.random() * 0.2 * exponential;
   return Math.min(exponential + jitter, maxDelay);
 }
 
@@ -105,16 +106,6 @@ export function serializeError(error: unknown): Record<string, unknown> {
  */
 export function generateTaskId(prefix: string = 'task'): string {
   const timestamp = Date.now().toString(36);
-  const random = Math.random().toString(36).slice(2, 7);
-  return `${prefix}-${timestamp}-${random}`;
-}
-
-/**
- * Merges executor options with sensible defaults.
- */
-export function mergeWithDefaults<T extends Partial<ExecutorOptions>>(
-  options: T,
-  defaults: ExecutorOptions
-): ExecutorOptions {
-  return { ...defaults, ...options };
+  const randomSuffix = Math.random().toString(36).slice(2, 8);
+  return `${prefix}-${timestamp}-${randomSuffix}`;
 }
