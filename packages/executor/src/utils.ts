@@ -86,6 +86,7 @@ export function isObject(value: unknown): value is Record<string, unknown> {
 
 /**
  * Safely serializes an error to a plain object for logging or transport.
+ * Also includes a `timestamp` field so I can tell when errors occurred in logs.
  */
 export function serializeError(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
@@ -93,6 +94,7 @@ export function serializeError(error: unknown): Record<string, unknown> {
       name: error.name,
       message: error.message,
       stack: error.stack,
+      timestamp: new Date().toISOString(),
     };
   }
   if (isObject(error)) {
@@ -102,10 +104,4 @@ export function serializeError(error: unknown): Record<string, unknown> {
 }
 
 /**
- * Generates a unique task ID using a timestamp and random suffix.
- */
-export function generateTaskId(prefix: string = 'task'): string {
-  const timestamp = Date.now().toString(36);
-  const randomSuffix = Math.random().toString(36).slice(2, 8);
-  return `${prefix}-${timestamp}-${randomSuffix}`;
-}
+ * Generates a unique task ID using a timestamp and ran
