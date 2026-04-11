@@ -71,7 +71,9 @@ export async function execute<T>(
       lastError = err;
 
       if (attempt < maxAttempts && retryDelay > 0) {
-        await delay(retryDelay);
+        // Use exponential backoff: double the delay on each retry attempt
+        const backoff = retryDelay * Math.pow(2, attempt - 1);
+        await delay(backoff);
       }
     }
   }
@@ -100,7 +102,4 @@ export async function executeAll<T>(
   const queue = tasks.map((task, index) => ({ task, index }));
   const inFlight: Promise<void>[] = [];
 
-  async function runNext(): Promise<void> {
-    const item = queue.shift();
-    if (!item) return;
-    resul
+  async function ru
