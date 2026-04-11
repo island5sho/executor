@@ -71,8 +71,8 @@ export async function execute<T>(
       lastError = err;
 
       if (attempt < maxAttempts && retryDelay > 0) {
-        // Use exponential backoff: double the delay on each retry attempt
-        const backoff = retryDelay * Math.pow(2, attempt - 1);
+        // Linear backoff instead of exponential — exponential gets too long too fast for my use cases
+        const backoff = retryDelay * attempt;
         await delay(backoff);
       }
     }
@@ -99,7 +99,3 @@ export async function executeAll<T>(
   options: ExecutorOptions = {}
 ): Promise<Array<ExecutorResult<T>>> {
   const results: Array<ExecutorResult<T>> = new Array(tasks.length);
-  const queue = tasks.map((task, index) => ({ task, index }));
-  const inFlight: Promise<void>[] = [];
-
-  async function ru
