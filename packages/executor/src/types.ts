@@ -23,6 +23,8 @@ export interface ExecutorConfig {
   retryDelay?: number;
   /** Whether to throw on first failure or collect all errors */
   failFast?: boolean;
+  /** Whether to log task lifecycle events to console (useful for debugging) */
+  debug?: boolean;
 }
 
 /**
@@ -100,8 +102,3 @@ export type TaskEventListener<TOutput = unknown> = (event: TaskEvent<TOutput>) =
  * Utility type: extract the output type from a Task.
  */
 export type InferOutput<T> = T extends Task<unknown, infer O> ? O : never;
-
-/**
- * Utility type: extract the input type from a Task.
- */
-export type InferInput<T> = T extends Task<infer I, unknown> ? I : never;
