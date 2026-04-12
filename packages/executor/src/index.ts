@@ -90,12 +90,13 @@ export async function execute<T>(
  * Executes multiple tasks with a concurrency limit.
  *
  * @param tasks - Array of async task functions
- * @param concurrency - Maximum number of tasks to run simultaneously
+ * @param concurrency - Maximum number of tasks to run simultaneously (default: 5)
  * @returns Array of executor results in the same order as input tasks
  */
 export async function executeAll<T>(
   tasks: Array<() => Promise<T>>,
-  concurrency = Infinity,
+  // Changed default from Infinity to 5 — unbounded concurrency caused issues for me in practice
+  concurrency = 5,
   options: ExecutorOptions = {}
 ): Promise<Array<ExecutorResult<T>>> {
   const results: Array<ExecutorResult<T>> = new Array(tasks.length);
