@@ -51,6 +51,8 @@ export interface Task<TInput = unknown, TOutput = unknown> {
   retries?: number;
   /** Metadata attached to the task */
   meta?: Record<string, unknown>;
+  /** Optional human-readable label for the task (helpful for debugging) */
+  label?: string;
 }
 
 /**
@@ -89,14 +91,4 @@ export interface BatchResult<TOutput = unknown> {
   cancelled: TaskResult<TOutput>[];
   /** Total wall-clock duration for the batch in milliseconds */
   totalDurationMs: number;
-}
-
-/**
- * Event emitted during task lifecycle changes.
- */
-export interface TaskEvent<TOutput = unknown> {
-  type: "task:start" | "task:complete" | "task:fail" | "task:retry" | "task:cancel";
-  taskId: string;
-  timestamp: Date;
-  result?: TaskResult<TOutput>;
 }
