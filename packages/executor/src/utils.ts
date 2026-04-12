@@ -61,9 +61,9 @@ export async function withRetry<T>(
  * Creates a timeout wrapper for a promise.
  * Rejects with a TimeoutError if the promise doesn't resolve within the given time.
  * @param promise - The promise to wrap
- * @param timeoutMs - Timeout duration in milliseconds
+ * @param timeoutMs - Timeout duration in milliseconds (default: 5000ms)
  */
-export function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number = 5000): Promise<T> {
   let timeoutHandle: ReturnType<typeof setTimeout>;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -97,11 +97,4 @@ export function serializeError(error: unknown): Record<string, unknown> {
       timestamp: new Date().toISOString(),
     };
   }
-  if (isObject(error)) {
-    return error;
-  }
-  return { message: String(error) };
-}
-
-/**
- * Generates a unique task ID using a timestamp and ran
+  if (isObject(error))
