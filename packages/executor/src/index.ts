@@ -90,13 +90,31 @@ export async function execute<T>(
  * Executes multiple tasks with a concurrency limit.
  *
  * @param tasks - Array of async task functions
- * @param concurrency - Maximum number of tasks to run simultaneously (default: 5)
+ * @param concurrency - Maximum number of tasks to run simultaneously (default: 3)
  * @returns Array of executor results in the same order as input tasks
  */
 export async function executeAll<T>(
   tasks: Array<() => Promise<T>>,
-  // Changed default from Infinity to 5 — unbounded concurrency caused issues for me in practice
-  concurrency = 5,
+  // Lowered default from 5 to 3 — I mostly hit rate-limited APIs where 5 concurrent was too aggressive
+  concurrency = 3,
   options: ExecutorOptions = {}
-): Promise<Array<ExecutorResult<T>>> {
-  const results: Array<ExecutorResult<T>> = new Array(tasks.length);
+): Promise<ExecutorResult<T>[]> {
+  const results: ExecutorResult<T>[] = new Array(tasks.length);
+  let index = 0;
+
+  async function worker() {
+    while (index < tasks.length) {
+      const current = index++;
+      results[current] = await execute(tasks[current], options);
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(concurrency, tasks.length) }, worker);
+  await Promise.all(workers);
+
+  return results;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
