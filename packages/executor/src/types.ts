@@ -27,6 +27,12 @@ export interface ExecutorConfig {
   debug?: boolean;
   /** Whether to include cancelled tasks in the failed array of BatchResult */
   includeCancelledInFailed?: boolean;
+  /**
+   * Whether to preserve task insertion order in BatchResult.results.
+   * Defaults to false (results are returned in completion order).
+   * Set to true if you need results to match the order tasks were submitted.
+   */
+  preserveOrder?: boolean;
 }
 
 /**
@@ -93,14 +99,4 @@ export interface TaskEvent<TOutput = unknown> {
   taskId: string;
   timestamp: Date;
   result?: TaskResult<TOutput>;
-  attempt?: number;
-  error?: Error;
 }
-
-/**
- * Listener function for task lifecycle events.
- */
-export type TaskEventListener<TOutput = unknown> = (event: TaskEvent<TOutput>) => void;
-
-/**
- * Utility type: extrac
