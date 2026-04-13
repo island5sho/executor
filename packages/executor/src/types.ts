@@ -53,6 +53,11 @@ export interface Task<TInput = unknown, TOutput = unknown> {
   meta?: Record<string, unknown>;
   /** Optional human-readable label for the task (helpful for debugging) */
   label?: string;
+  /**
+   * Optional priority for the task. Higher values = higher priority.
+   * Note: not yet implemented in the executor logic, but useful for future scheduling.
+   */
+  priority?: number;
 }
 
 /**
