@@ -29,8 +29,8 @@ export interface ExecutorConfig {
   includeCancelledInFailed?: boolean;
   /**
    * Whether to preserve task insertion order in BatchResult.results.
-   * Defaults to false (results are returned in completion order).
-   * Set to true if you need results to match the order tasks were submitted.
+   * Defaults to true (results match the order tasks were submitted).
+   * Set to false if you want results returned in completion order instead.
    */
   preserveOrder?: boolean;
 }
@@ -89,6 +89,4 @@ export interface BatchResult<TOutput = unknown> {
   failed: TaskResult<TOutput>[];
   /** Tasks that were cancelled - useful to distinguish from actual failures */
   cancelled: TaskResult<TOutput>[];
-  /** Total wall-clock duration for the batch in milliseconds */
-  totalDurationMs: number;
 }
