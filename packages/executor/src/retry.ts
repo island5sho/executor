@@ -6,7 +6,7 @@ import type { RetryOptions, ExecutorError } from "./types";
  */
 const DEFAULT_RETRY_OPTIONS: Required<RetryOptions> = {
   maxAttempts: 3,
-  initialDelay: 100,
+  initialDelay: 200,
   maxDelay: 30000,
   backoffFactor: 2,
   jitter: true,
