@@ -90,8 +90,14 @@ export interface BatchResult<TOutput = unknown> {
   results: TaskResult<TOutput>[];
   /** Tasks that completed successfully */
   succeeded: TaskResult<TOutput>[];
-  /** Tasks that failed */
+  /** Tasks that failed or were cancelled (depending on includeCancelledInFailed config) */
   failed: TaskResult<TOutput>[];
-  /** Tasks that were cancelled - useful to distinguish from actual failures */
+  /** Tasks that were cancelled */
   cancelled: TaskResult<TOutput>[];
+  /** Total duration of the batch execution in milliseconds */
+  totalDurationMs: number;
+  /** Timestamp when the batch started */
+  startedAt: Date;
+  /** Timestamp when the batch finished */
+  finishedAt: Date;
 }
